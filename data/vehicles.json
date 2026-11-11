@@ -1,0 +1,231 @@
+[
+  {
+    "brand": "Fiat",
+    "models": [
+      {
+        "name": "Ducato",
+        "yearFrom": 2006,
+        "yearTo": null,
+        "engines": [
+          { "name": "2.3 MultiJet 120", "kw": 88 },
+          { "name": "2.3 MultiJet 130", "kw": 96 },
+          { "name": "2.3 MultiJet 150", "kw": 109 },
+          { "name": "2.3 MultiJet 180", "kw": 130 }
+        ]
+      }
+    ]
+  },
+  {
+    "brand": "Peugeot",
+    "models": [
+      {
+        "name": "Boxer",
+        "yearFrom": 2006,
+        "yearTo": null,
+        "engines": [
+          { "name": "2.2 HDi 120", "kw": 88 },
+          { "name": "2.0 BlueHDi 130", "kw": 96 },
+          { "name": "2.2 BlueHDi 140", "kw": 103 },
+          { "name": "2.2 BlueHDi 165", "kw": 121 }
+        ]
+      }
+    ]
+  },
+  {
+    "brand": "Citroën",
+    "models": [
+      {
+        "name": "Jumper",
+        "yearFrom": 2006,
+        "yearTo": null,
+        "engines": [
+          { "name": "2.2 HDi 120", "kw": 88 },
+          { "name": "2.0 BlueHDi 130", "kw": 96 },
+          { "name": "2.2 BlueHDi 140", "kw": 103 },
+          { "name": "2.2 BlueHDi 165", "kw": 121 }
+        ]
+      }
+    ]
+  },
+  {
+    "brand": "Mercedes-Benz",
+    "models": [
+      {
+        "name": "Sprinter",
+        "yearFrom": 2018,
+        "yearTo": null,
+        "engines": [
+          { "name": "311 CDI", "kw": 84 },
+          { "name": "314 CDI", "kw": 105 },
+          { "name": "316 CDI", "kw": 120 },
+          { "name": "317 CDI", "kw": 125 },
+          { "name": "319 CDI", "kw": 140 }
+        ]
+      }
+    ]
+  },
+  {
+    "brand": "Volkswagen",
+    "models": [
+      {
+        "name": "Crafter",
+        "yearFrom": 2017,
+        "yearTo": null,
+        "engines": [
+          { "name": "2.0 TDI 102", "kw": 75 },
+          { "name": "2.0 TDI 122", "kw": 90 },
+          { "name": "2.0 TDI 140", "kw": 103 },
+          { "name": "2.0 TDI 177", "kw": 130 }
+        ]
+      },
+      {
+        "name": "Transporter",
+        "yearFrom": 2015,
+        "yearTo": null,
+        "engines": [
+          { "name": "2.0 TDI 90", "kw": 66 },
+          { "name": "2.0 TDI 110", "kw": 81 },
+          { "name": "2.0 TDI 150", "kw": 110 }
+        ]
+      },
+      {
+        "name": "Golf",
+        "yearFrom": 2012,
+        "yearTo": 2020,
+        "engines": [
+          { "name": "1.0 TSI", "kw": 85 },
+          { "name": "1.4 TSI", "kw": 110 },
+          { "name": "1.6 TDI", "kw": 81 },
+          { "name": "2.0 TDI", "kw": 110 },
+          { "name": "2.0 TSI GTI", "kw": 180 }
+        ]
+      },
+      {
+        "name": "Passat",
+        "yearFrom": 2014,
+        "yearTo": 2023,
+        "engines": [
+          { "name": "1.4 TSI", "kw": 110 },
+          { "name": "1.5 TSI", "kw": 110 },
+          { "name": "2.0 TDI", "kw": 110 },
+          { "name": "2.0 TDI", "kw": 140 }
+        ]
+      }
+    ]
+  },
+  {
+    "brand": "Ford",
+    "models": [
+      {
+        "name": "Transit",
+        "yearFrom": 2014,
+        "yearTo": null,
+        "engines": [
+          { "name": "2.0 EcoBlue 105", "kw": 77 },
+          { "name": "2.0 EcoBlue 130", "kw": 96 },
+          { "name": "2.0 EcoBlue 170", "kw": 125 }
+        ]
+      },
+      {
+        "name": "Focus",
+        "yearFrom": 2018,
+        "yearTo": null,
+        "engines": [
+          { "name": "1.0 EcoBoost", "kw": 92 },
+          { "name": "1.0 EcoBoost", "kw": 114 },
+          { "name": "1.5 EcoBlue", "kw": 88 },
+          { "name": "2.0 EcoBlue", "kw": 110 }
+        ]
+      }
+    ]
+  },
+  {
+    "brand": "Renault",
+    "models": [
+      {
+        "name": "Master",
+        "yearFrom": 2010,
+        "yearTo": null,
+        "engines": [
+          { "name": "2.3 dCi 110", "kw": 81 },
+          { "name": "2.3 dCi 130", "kw": 96 },
+          { "name": "2.3 dCi 145", "kw": 107 },
+          { "name": "2.3 dCi 165", "kw": 121 }
+        ]
+      }
+    ]
+  },
+  {
+    "brand": "Iveco",
+    "models": [
+      {
+        "name": "Daily",
+        "yearFrom": 2014,
+        "yearTo": null,
+        "engines": [
+          { "name": "2.3 116", "kw": 85 },
+          { "name": "2.3 136", "kw": 100 },
+          { "name": "2.3 156", "kw": 115 },
+          { "name": "3.0 180", "kw": 132 },
+          { "name": "3.0 210", "kw": 154 }
+        ]
+      }
+    ]
+  },
+  {
+    "brand": "Škoda",
+    "models": [
+      {
+        "name": "Octavia",
+        "yearFrom": 2013,
+        "yearTo": 2020,
+        "engines": [
+          { "name": "1.0 TSI", "kw": 85 },
+          { "name": "1.4 TSI", "kw": 110 },
+          { "name": "1.5 TSI", "kw": 110 },
+          { "name": "1.6 TDI", "kw": 81 },
+          { "name": "2.0 TDI", "kw": 110 },
+          { "name": "2.0 TSI", "kw": 140 }
+        ]
+      },
+      {
+        "name": "Octavia",
+        "yearFrom": 2020,
+        "yearTo": null,
+        "engines": [
+          { "name": "1.5 TSI", "kw": 110 },
+          { "name": "2.0 TSI", "kw": 140 },
+          { "name": "2.0 TDI", "kw": 85 },
+          { "name": "2.0 TDI", "kw": 110 },
+          { "name": "2.0 TSI RS", "kw": 180 }
+        ]
+      },
+      {
+        "name": "Fabia",
+        "yearFrom": 2014,
+        "yearTo": 2021,
+        "engines": [
+          { "name": "1.0 MPI", "kw": 55 },
+          { "name": "1.0 TSI", "kw": 70 },
+          { "name": "1.0 TSI", "kw": 81 }
+        ]
+      }
+    ]
+  },
+  {
+    "brand": "Hyundai",
+    "models": [
+      {
+        "name": "i30",
+        "yearFrom": 2017,
+        "yearTo": null,
+        "engines": [
+          { "name": "1.0 T-GDI", "kw": 88 },
+          { "name": "1.4 T-GDI", "kw": 103 },
+          { "name": "1.6 CRDi", "kw": 85 },
+          { "name": "1.6 CRDi", "kw": 100 }
+        ]
+      }
+    ]
+  }
+]

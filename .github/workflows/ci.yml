@@ -20,6 +20,21 @@ jobs:
       - run: npm run lint
       - run: npm test
 
+  e2e:
+    name: Playwright e2e
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Bez --with-deps. To tahá aptem fonty a při výpadku zrcadel Ubuntu job spadne dřív, než testy začnou.
+      # Sdílené knihovny Chromia na ubuntu-latest už jsou. Samotný prohlížeč se stáhne z CDN Playwright.
+      - run: npx playwright install chromium
+      - run: npm run test:e2e
+
   rls:
     name: RLS a API testy
     runs-on: ubuntu-latest

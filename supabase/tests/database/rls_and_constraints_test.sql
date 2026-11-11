@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(78);
+select plan(84);
 
 -- ---------------------------------------------------------------------------
 -- Katalog
@@ -58,6 +58,8 @@ select has_column('public', 'inventory_items', 'oem_compact', 'sklad má kompakt
 select has_column('public', 'public_inventory', 'part_condition', 'veřejný sklad ukazuje, jestli je díl použitý nebo nový');
 select has_column('public', 'public_inventory', 'origin_kind', 'veřejný sklad ukazuje OEM nebo druhovýrobu');
 select hasnt_column('public', 'public_inventory', 'oem_compact', 'veřejný sklad kompaktní OEM neukazuje');
+select has_column('public', 'inventory_items', 'condition_detail', 'sklad umí uložit popis stavu');
+select has_column('public', 'public_inventory', 'condition_detail', 'veřejný sklad ukazuje popis stavu');
 select ok(
   (
     select not attnotnull
@@ -646,6 +648,59 @@ select results_eq(
     returning role::text$$,
   array['admin'],
   'admin může změnit roli'
+);
+
+reset role;
+select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"11111111-1111-4111-8111-111111111111","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+
+select throws_ok(
+  $$insert into storage.objects (bucket_id, name) values ('inventory-images', 'zakaznik/a.jpg')$$,
+  '42501',
+  'new row violates row-level security policy for table "objects"',
+  'zákazník nenahraje fotku skladu'
+);
+
+reset role;
+select set_config('request.jwt.claim.sub', '', true);
+select set_config('request.jwt.claims', '{"role":"anon"}', true);
+set local role anon;
+
+select throws_ok(
+  $$insert into storage.objects (bucket_id, name) values ('inventory-images', 'anon/a.jpg')$$,
+  '42501',
+  'new row violates row-level security policy for table "objects"',
+  'anon nenahraje fotku skladu'
+);
+
+reset role;
+select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"22222222-2222-4222-8222-222222222222","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+
+select lives_ok(
+  $$insert into storage.objects (bucket_id, name) values ('inventory-images', 'admin/a.jpg')$$,
+  'admin nahraje fotku skladu'
+);
+select ok(
+  exists (
+    select 1
+    from pg_policies
+    where schemaname = 'storage'
+      and tablename = 'objects'
+      and policyname = 'inventory_images_admin_insert'
+      and roles::text like '%authenticated%'
+  ),
+  'politika nahrání fotky míří na přihlášené a dál ji omezuje role admin'
 );
 
 select * from finish();
