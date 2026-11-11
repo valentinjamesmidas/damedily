@@ -1,0 +1,2 @@
+-- Krok 1 neseeduje sklad, uživatele ani objednávky.
+-- Testovací řádky vznikají jen v transakci pgTAP a v API testu, který je po sobě smaže.
