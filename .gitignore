@@ -9,6 +9,10 @@ coverage
 !.env.example
 .supabase.env
 
+playwright-report
+test-results
+blob-report
+
 npm-debug.log*
 
 .DS_Store

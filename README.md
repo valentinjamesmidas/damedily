@@ -1,10 +1,10 @@
 # DámeDíly.cz
 
-E-shop DámeDíly.cz. Krok 1 je kostra Next.js, schéma Supabase a testy, které hlídají minimální objednávku 2&nbsp;000&nbsp;Kč a to, že se nákupní cena, interní tag, zdroj a reference dodavatele nevracejí anonymovi ani zákazníkovi. Krok 2 přidává serverového klienta xAI, prompty Dílobota, maskování dodavatelů a interní endpoint `/api/dilobot`. Krok 3 přidává progresivní hledání `/api/search/stream`.
+E-shop DámeDíly.cz. Krok 1 je kostra Next.js, schéma Supabase a testy, které hlídají minimální objednávku 2&nbsp;000&nbsp;Kč a to, že se nákupní cena, interní tag, zdroj a reference dodavatele nevracejí anonymovi ani zákazníkovi. Krok 2 přidává serverového klienta xAI, prompty Dílobota, maskování dodavatelů a interní endpoint `/api/dilobot`. Krok 3 přidává progresivní hledání `/api/search/stream`. Krok 4 je hlavní stránka a administrace skladu.
 
 Zadání produktu je v [docs/MASTERPROMPT.md](docs/MASTERPROMPT.md). Dodatek Právní mantinely má přednost, včetně změny bodu 4 o scrapingu. Rozsah kostry je v [docs/zadani/krok-1.md](docs/zadani/krok-1.md).
 
-Platby a veřejné UI Dílobota tu záměrně nejsou.
+Platby a košík tu záměrně nejsou. Obchodní podmínky, reklamace a odstoupení jsou zástupné stránky s poznámkou, že text doplní právník.
 
 ## Požadavky
 
@@ -26,7 +26,15 @@ supabase start
 npm run dev
 ```
 
-Aplikace běží na [http://127.0.0.1:3000](http://127.0.0.1:3000). Stránky `/`, `/ucet` a `/admin` jsou záměrně jen kostra.
+Aplikace běží na [http://127.0.0.1:3000](http://127.0.0.1:3000). Úvod čte veřejný sklad `public_inventory`. Administrace je na `/admin` a bez role admin se neotevře.
+
+Ukázkové položky (název začíná `[UKÁZKA]`) se vloží při `supabase start` / `supabase db reset` ze `supabase/seed.sql`. Stejný soubor znovu nahraje:
+
+```bash
+npm run seed:demo
+```
+
+První admin se pořád nastavuje ručně (`update profiles set role = 'admin'`). V repozitáři žádné heslo není. Fotky skladu jdou do bucketu `inventory-images`: čtení je veřejné, zápis jen pro admina.
 
 Lokální `supabase start` používá demonstrační JWT z `supabase/config.toml`. Není to produkční tajemství a do hostovaného projektu nepatří.
 
@@ -36,18 +44,20 @@ Lokální `supabase start` používá demonstrační JWT z `supabase/config.toml
 npm run typecheck
 npm run lint
 npm test
+npm run test:e2e
 supabase test db
 supabase status -o env > .supabase.env
 set -a && source .supabase.env && set +a
 npm run test:rls-api
 ```
 
-- `npm test` jsou unit testy (Vitest) s mockovaným xAI i dodavateli. Síť ani databázi nepotřebují.
+- `npm test` jsou unit testy a komponentové testy (Vitest, Testing Library). xAI i dodavatele mockují. Síť ani databázi nepotřebují.
+- `npm run test:e2e` je Playwright. Sám si zvedne `next dev` a ověří úvod, přepínání tabů a to, že `/admin` bez přihlášení skončí na přihlášení. Supabase k tomu nepotřebuje.
 - `npm run test:live` je volitelný smoke test proti `https://api.x.ai/v1/chat/completions`. Bez `XAI_API_KEY` se přeskočí a skončí úspěchem. V CI ho pouští samostatný job, jen když je v repozitáři secret `XAI_API_KEY`.
 - `supabase test db` pouští pgTAP v `supabase/tests` proti lokálnímu Postgresu.
 - `npm run test:rls-api` volá Auth a PostgREST. Bez běžícího Supabase spadne, neskipuje se.
 
-V GitHub Actions běží typecheck, lint a unit testy v jednom jobu. Druhý job spustí lokální Supabase, pgTAP i API testy. Třetí job je živý test xAI a bez secretu se po kontrole klíče dál nespouští.
+V GitHub Actions běží typecheck, lint a unit i komponentové testy v jednom jobu. Samostatný job spustí Playwright. Další job spustí lokální Supabase, pgTAP i API testy. Živý test xAI se bez secretu po kontrole klíče dál nespouští.
 
 ## xAI
 
@@ -55,7 +65,9 @@ Klient je v `lib/xai-grok.ts` a smí běžet jen na serveru. Volá `POST /v1/cha
 
 `XAI_TEXT_MODEL` a `XAI_VISION_MODEL` určují ID modelu. Když chybí, použije se `grok-4.7`, který bere text i obrázky. Model `grok-vision` v API není. Obrázek se posílá jako `image_url` s adresou `https` nebo jako `data:image/jpeg|png;base64,…` (nejvýš 20&nbsp;MiB). Strukturovaný výstup jde přes `response_format.type = json_schema` a výsledek se ještě ověří Zodem. Nástroje se předávají v poli `tools`.
 
-`/api/dilobot` je `POST` se streamem `text/event-stream`. Tělo je `{ "messages": [{ "role": "user", "content": "…" }] }`. Systémový prompt nastavuje server, zákazník ho nepřepíše. Ve streamu je jen text odpovědi, ne interní uvažování modelu.
+`/api/dilobot` je `POST` se streamem `text/event-stream`. Tělo je `{ "messages": [{ "role": "user", "content": "…" }] }`. Systémový prompt nastavuje server, zákazník ho nepřepíše. Ve streamu je jen text odpovědi, ne interní uvažování modelu. Úvodní stránka ten stream používá. Když model neodpoví, stránka to řekne a nabídne katalog. `POST /api/dilobot/turn` po skončení streamu vrátí jen `readyForSearch` a specifikaci, aby šlo spustit hledání. Když turn selže, text z chatu zůstane a hledání se nespustí.
+
+`POST /api/vision` čte JPEG nebo PNG a vrátí jen OEM a typ dílu, bez jistoty modelu. `POST /api/admin/vision` je totéž pro skladovou kartu (název, OEM, kategorie) a bez role admin se model nevolá. Při chybě nebo HTTP 402 stránka neslibuje výsledek a nechá ruční zadání.
 
 Veřejná nabídka z `lib/white-label.ts` má prodejní cenu z `sellingPrice`, stav, údaj použitý/nový a dodací lhůtu. U externího zdroje je to `4–5 pracovních dní` a označení skladu netvrdí, že díl už je v ČR. Vlastní sklad uvádí, že je na provozovně. V typu ani v JSON nejsou `cost_price`, `source_platform`, `internal_project_tag` ani AI skóre.
 
@@ -74,6 +86,14 @@ Zápis do `search_sessions` proběhne, jen když je nastavené `SUPABASE_URL` a 
 Unit testy konektory mockují. Živý dotaz na zdroje do `npm test` nepatří.
 
 Ověření 11.&nbsp;11.&nbsp;2026: Autodoc, Ovoko/RRR i veřejná stránka B-Parts na identifikovaný požadavek vrací Cloudflare nebo CloudFront blokaci, takže konektor nabídku nevymýšlí. Inter Cars a Auto Partner nemají veřejné API bez smlouvy a zakázané nebo přihlašovací adresy se nevolají. Vlastní sklad vrátí jen řádek, který má vyplněné `part_condition`. Denní kurz ČNB z `api.cnb.cz` je veřejný a načítá se.
+
+## Úvod a administrace
+
+Úvod má tři taby. Dílobot streamuje `/api/dilobot`. Katalog bere značky, modely a motorizace z `data/vehicles.json`, ne z vymyšleného API výrobce. Foto přijme JPEG nebo PNG, zavolá vision a při chybě nechá ruční OEM. Výsledky jdou z `/api/search/stream`: první nabídka hned, další se připíšou s textem „Právě jsme pro vás ověřili další alternativu…“. Karta ukazuje český název, použitý nebo nový, stav, OEM, prodejní cenu, dodací lhůtu z veřejné nabídky a pečeť ruční kontroly. Nákupní cena, zdroj a AI skóre v ní nejsou.
+
+Akční nabídka, stálá nabídka a pneu pro dodávky čtou `public_inventory`. Prázdný sklad má vlastní hlášku. Pneu filtruje šířku, profil, průměr R15C/R16C/R17C a období. Vlastní sklad na kartě říká, že je na provozovně. U externí nabídky zůstává lhůta 4–5 pracovních dní.
+
+`/admin` hlídá middleware i server. Nepřihlášený skončí na `/admin/prihlaseni` (heslo nebo odkaz, bez zakládání účtu). Zákazník vidí `/admin/pristup` a sklad se nenačte. Administrátor mění položky včetně povinného tagu EKOKLADNO / DAMEDILY. Prodejní cena se předvyplní z `sellingPrice` a jde přepsat. Umístění je jedno ze tří, protože sloupec `placement_type` je jeden. Fotky se nahrávají do Storage pod session administrátora, takže zápis drží RLS.
 
 ## Přístup k datům
 

@@ -1,16 +1,19 @@
 import {
+  blankToNull,
   dilobotTurnSchema,
+  inventoryPhotoDraftSchema,
   listingNormalizationSchema,
   publicHintFromVision,
   visionExtractionSchema,
   type DilobotTurn,
+  type InventoryPhotoDraft,
   type ListingNormalization,
   type PublicVisionHint,
   type VisionExtraction,
 } from "@/lib/ai-schemas";
 import { DILOBOT_JSON_HINT, DILOBOT_SYSTEM_PROMPT } from "@/lib/prompts/dilobot";
 import { LISTING_SYSTEM_PROMPT } from "@/lib/prompts/listing";
-import { VISION_SYSTEM_PROMPT } from "@/lib/prompts/vision";
+import { INVENTORY_VISION_PROMPT, VISION_SYSTEM_PROMPT } from "@/lib/prompts/vision";
 import {
   userImageMessage,
   type XaiClient,
@@ -195,4 +198,21 @@ export async function extractPartFromPhoto(
 
 export function visionHintForPublic(result: VisionExtraction): PublicVisionHint {
   return publicHintFromVision(result);
+}
+
+export async function draftInventoryFromPhoto(client: XaiClient, image: XaiImageSource): Promise<InventoryPhotoDraft> {
+  const draft = await client.chatJson({
+    purpose: "vision",
+    schema: inventoryPhotoDraftSchema,
+    schemaName: "inventory_photo_draft",
+    messages: [
+      { role: "system", content: INVENTORY_VISION_PROMPT },
+      userImageMessage(image, "Přečti název dílu, OEM a kategorii. Co není čitelné, nech null."),
+    ],
+  });
+  return {
+    titleCs: blankToNull(draft.titleCs),
+    oemNumber: blankToNull(draft.oemNumber),
+    partCategory: blankToNull(draft.partCategory),
+  };
 }

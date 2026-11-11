@@ -98,7 +98,7 @@ export function createSupabaseStockLoader(
     const params = new URLSearchParams();
     params.set(
       "select",
-      "id,title_cs,oem_number,part_category,vehicle_compatibility,cost_price_czk,stock_quantity,images,internal_project_tag,part_condition,origin_kind",
+      "id,title_cs,oem_number,part_category,vehicle_compatibility,cost_price_czk,stock_quantity,images,internal_project_tag,part_condition,origin_kind,condition_detail",
     );
     params.set("stock_quantity", "gt.0");
     params.set("part_condition", "not.is.null");
@@ -153,7 +153,7 @@ function parseStockRow(value: unknown): StockRow | null {
     internalProjectTag: tag,
     partCondition: condition,
     originKind: origin,
-    conditionDetail: null,
+    conditionDetail: typeof row.condition_detail === "string" && row.condition_detail.trim() ? row.condition_detail.trim() : null,
   };
 }
 

@@ -1,24 +1,33 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
+import { AdminAccess } from "@/components/admin/admin-access";
+import { InventoryManager } from "@/components/admin/inventory-manager";
+import { requireAdmin } from "@/lib/admin/session";
+import { parseAdminItems } from "@/lib/inventory/admin-item";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Administrace",
+  title: "Sklad",
 };
 
-export default function AdminPage() {
+export default async function AdminPage() {
+  const access = await requireAdmin();
+  if (!access.ok) {
+    if (access.status === 403) redirect("/admin/pristup");
+    redirect(access.status === 503 ? "/admin/prihlaseni?chyba=konfigurace" : "/admin/prihlaseni");
+  }
+
+  const { data, error } = await access.supabase
+    .from("inventory_items")
+    .select(
+      "id,title_cs,oem_number,part_category,vehicle_compatibility,tire_specs,cost_price_czk,selling_price_czk,stock_quantity,placement_type,internal_project_tag,images,part_condition,origin_kind,condition_detail",
+    )
+    .order("created_at", { ascending: false });
+
   return (
-    <div className="max-w-2xl">
-      <p className="font-display text-sm font-semibold uppercase tracking-[0.18em] text-accent">
-        Jen role admin
-      </p>
-      <h1 className="mt-3 font-display text-4xl font-semibold tracking-tight">Administrace</h1>
-      <p className="mt-4 text-lg leading-7 text-muted">
-        Sklad, nákupní cena, interní tag a zdroj objednávky uvidí až přihlášený administrátor.
-        Zákaznické stránky ty údaje neberou.
-      </p>
-      <div className="mt-8 rounded-3xl border border-dashed border-line bg-card px-5 py-6 text-sm leading-6 text-muted">
-        Správa skladu a fronta ruční kontroly se sem doplní později. Teď tu není formulář, který by
-        zapisoval do databáze.
-      </div>
-    </div>
+    <AdminAccess status="admin">
+      <InventoryManager items={parseAdminItems(data ?? [])} loadError={Boolean(error)} />
+    </AdminAccess>
   );
 }

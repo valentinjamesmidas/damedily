@@ -74,3 +74,17 @@ export function publicHintFromVision(result: VisionExtraction): PublicVisionHint
     partType: result.partType,
   };
 }
+
+/** Předvyplnění skladu z fotky. Jistota tu není, aby neměla kam utéct do formuláře. */
+export const inventoryPhotoDraftSchema = z.object({
+  titleCs: z.string().nullable(),
+  oemNumber: z.string().nullable(),
+  partCategory: z.string().nullable(),
+});
+
+export type InventoryPhotoDraft = z.infer<typeof inventoryPhotoDraftSchema>;
+
+export function blankToNull(value: string | null): string | null {
+  const trimmed = value?.trim() ?? "";
+  return trimmed || null;
+}

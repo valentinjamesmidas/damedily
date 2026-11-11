@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DILOBOT_JSON_HINT, DILOBOT_SYSTEM_PROMPT } from "./dilobot";
 import { LISTING_SYSTEM_PROMPT } from "./listing";
 import { OFFER_RANKING_PROMPT } from "./ranking";
-import { VISION_SYSTEM_PROMPT } from "./vision";
+import { INVENTORY_VISION_PROMPT, VISION_SYSTEM_PROMPT } from "./vision";
 
 const SUPPLIERS = ["Ovoko", "B-Parts", "Autodoc", "Inter Cars", "Auto Partner"];
 
@@ -53,6 +53,14 @@ describe("prompt překladu a vision", () => {
     for (const name of SUPPLIERS) {
       expect(VISION_SYSTEM_PROMPT).toContain(name);
     }
+  });
+
+  it("předvyplnění skladu nevymýšlí OEM a nevrací jistotu", () => {
+    expect(INVENTORY_VISION_PROMPT).toMatch(/OEM nevymýšlej/);
+    expect(INVENTORY_VISION_PROMPT).toMatch(/null/);
+    expect(INVENTORY_VISION_PROMPT).toMatch(/AI skóre/);
+    expect(INVENTORY_VISION_PROMPT).toMatch(/nákupní cenu/);
+    expect(INVENTORY_VISION_PROMPT).not.toMatch(/confidence/);
   });
 });
 
