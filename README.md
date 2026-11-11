@@ -57,7 +57,7 @@ npm run test:rls-api
 - `supabase test db` pouští pgTAP v `supabase/tests` proti lokálnímu Postgresu.
 - `npm run test:rls-api` volá Auth a PostgREST. Bez běžícího Supabase spadne, neskipuje se.
 
-V GitHub Actions běží typecheck, lint a unit i komponentové testy v jednom jobu. Samostatný job spustí Playwright. Další job spustí lokální Supabase, pgTAP i API testy. Živý test xAI se bez secretu po kontrole klíče dál nespouští.
+V GitHub Actions běží typecheck, lint a unit i komponentové testy v jednom jobu. Samostatný job stáhne Chromium příkazem `npx playwright install chromium` a spustí Playwright. Systémové fonty přes apt se nestahují: při výpadku zrcadel Ubuntu by job spadl dřív, než testy začnou, a knihovny prohlížeče na runneru už jsou. Další job spustí lokální Supabase, pgTAP i API testy. Živý test xAI se bez secretu po kontrole klíče dál nespouští.
 
 ## xAI
 

@@ -30,7 +30,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      # Bez --with-deps. To tahá aptem fonty a při výpadku zrcadel Ubuntu job spadne dřív, než testy začnou.
+      # Sdílené knihovny Chromia na ubuntu-latest už jsou. Samotný prohlížeč se stáhne z CDN Playwright.
+      - run: npx playwright install chromium
       - run: npm run test:e2e
 
   rls:
