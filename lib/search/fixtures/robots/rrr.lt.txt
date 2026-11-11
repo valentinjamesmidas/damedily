@@ -1,0 +1,50 @@
+User-agent: *
+Disallow: /api/
+Disallow: /admin/
+Disallow: /application/
+Disallow: */cart/
+Disallow: /system/
+Disallow: /wishlist/
+Disallow: /workshops/
+Disallow: /autoservisas/
+Disallow: /part/scrap_info_view/
+Disallow: *sh=*
+Disallow: /*?q=*
+Allow: /*?q=*&exact=1
+
+Disallow: /automobilis/
+Disallow: /pt/
+Disallow: /en/car/
+Disallow: /ru/avtomobil/
+Disallow: /es/coche/
+Disallow: /de/wagen/
+Disallow: /lv/auto/
+Disallow: /it/macchina/
+
+Disallow: /auto/
+Disallow: /samochod/
+Disallow: /macchina/
+Disallow: /coche/
+Disallow: /wagen/
+Disallow: /masina/
+
+Disallow: /graphql
+Disallow: /cdn-cgi/
+Disallow: /cdn-fpw/
+Disallow: */home/share
+
+Disallow: /*/*/*/*/*/*/*/*/*/*/*.jpg
+Disallow: /*/*/*/*/*/*/*/*/*/*/*.jpeg
+Disallow: /*/*/*/*/*/*/*/*/*/*/*.png
+
+User-agent: meta-externalagent
+Disallow: /
+
+User-agent: AdsBot-Google
+Disallow: /graphql
+Disallow: /api/spt
+
+User-agent: AdsBot-Google-Mobile
+Disallow: /graphql
+Disallow: /api/spt
+

@@ -36,6 +36,16 @@ export const listingNormalizationSchema = z.object({
 
 export type ListingNormalization = z.infer<typeof listingNormalizationSchema>;
 
+/**
+ * Interní pořadí alternativ. Model smí vrátit jen id, která dostal.
+ * Skóre tu není, aby nemělo kam utéct do veřejné nabídky.
+ */
+export const offerRankingSchema = z.object({
+  alternativeIds: z.array(z.string().min(1)).max(2),
+});
+
+export type OfferRanking = z.infer<typeof offerRankingSchema>;
+
 const confidenceSchema = z.number().min(0).max(1);
 
 /** Interní čtení fotky. Míra jistoty nesmí odejít do veřejné nabídky. */

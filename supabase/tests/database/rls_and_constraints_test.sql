@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(68);
+select plan(78);
 
 -- ---------------------------------------------------------------------------
 -- Katalog
@@ -52,6 +52,22 @@ select hasnt_column('public', 'public_inventory', 'cost_price_czk', 'view skladu
 select hasnt_column('public', 'public_inventory', 'internal_project_tag', 'view skladu nemá interní tag');
 select hasnt_column('public', 'public_inventory', 'source_platform', 'view skladu nemá zdroj');
 select hasnt_column('public', 'public_inventory', 'supplier_order_ref', 'view skladu nemá referenci dodavatele');
+select has_column('public', 'inventory_items', 'part_condition', 'sklad umí uložit použitý nebo nový');
+select has_column('public', 'inventory_items', 'origin_kind', 'sklad umí uložit OEM nebo druhovýrobu');
+select has_column('public', 'inventory_items', 'oem_compact', 'sklad má kompaktní OEM pro hledání');
+select has_column('public', 'public_inventory', 'part_condition', 'veřejný sklad ukazuje, jestli je díl použitý nebo nový');
+select has_column('public', 'public_inventory', 'origin_kind', 'veřejný sklad ukazuje OEM nebo druhovýrobu');
+select hasnt_column('public', 'public_inventory', 'oem_compact', 'veřejný sklad kompaktní OEM neukazuje');
+select ok(
+  (
+    select not attnotnull
+    from pg_attribute
+    where attrelid = 'public.search_sessions'::regclass
+      and attname = 'user_id'
+      and not attisdropped
+  ),
+  'search_sessions.user_id smí být prázdné'
+);
 
 select has_column('public', 'customer_order_items', 'selling_price_czk', 'zákaznické položky mají prodejní cenu');
 select hasnt_column('public', 'customer_order_items', 'cost_price_czk', 'zákaznické položky nemají nákupní cenu');
@@ -168,6 +184,18 @@ insert into public.inventory_items (
   'damedily'
 );
 
+select throws_ok(
+  $$insert into public.inventory_items (
+      title_cs, oem_number, part_category, cost_price_czk, selling_price_czk,
+      placement_type, internal_project_tag, part_condition
+    ) values (
+      'Špatný stav', 'OEM-BAD', 'Brzdy', 10, 20, 'action_offer', 'damedily', 'rozbity'
+    )$$,
+  '23514',
+  'new row for relation "inventory_items" violates check constraint "inventory_items_part_condition_check"',
+  'neznámý stav dílu neprojde'
+);
+
 insert into public.orders (id, order_number, user_id, total_amount_czk)
 values
   (
@@ -236,6 +264,16 @@ values
     'filtr oleje',
     'first_found'
   );
+
+insert into public.search_sessions (id, user_id, query_type, raw_query, status, results)
+values (
+  'ffffffff-ffff-4fff-8fff-ffffffffffff',
+  null,
+  'catalog',
+  'anonymní hledání',
+  'completed',
+  '[]'::jsonb
+);
 
 -- ---------------------------------------------------------------------------
 -- Anon: přímý SELECT na tabulky je zakázaný, sklad jen přes view.
@@ -417,6 +455,10 @@ select is_empty(
   $$select id from public.search_sessions where id = 'cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd'$$,
   'zákazník nevidí cizí vyhledávání'
 );
+select is_empty(
+  $$select id from public.search_sessions where id = 'ffffffff-ffff-4fff-8fff-ffffffffffff'$$,
+  'zákazník nevidí anonymní hledání'
+);
 select throws_ok(
   $$insert into public.search_sessions (user_id, query_type, raw_query, status)
     values ('33333333-3333-4333-8333-333333333333', 'chat', 'cizí', 'first_found')$$,
@@ -591,6 +633,11 @@ select is(
   (select count(*)::int from public.orders where order_number in ('DD-TEST-1', 'DD-TEST-2')),
   2,
   'admin vidí objednávky obou zákazníků'
+);
+select is(
+  (select count(*)::int from public.search_sessions where id = 'ffffffff-ffff-4fff-8fff-ffffffffffff'),
+  1,
+  'admin vidí anonymní hledání'
 );
 select results_eq(
   $$update public.profiles
