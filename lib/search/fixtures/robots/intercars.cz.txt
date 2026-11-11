@@ -1,0 +1,8 @@
+User-agent: *
+
+Disallow: /admin/
+Disallow: /vyhledavani/q=*
+Disallow: /request.php
+
+Sitemap: https://www.intercars.cz/sitemap.xml
+Sitemap: https://www.intercars.cz/sitemap-images.xml

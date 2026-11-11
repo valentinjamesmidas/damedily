@@ -1,10 +1,10 @@
 # DámeDíly.cz
 
-E-shop DámeDíly.cz. Krok 1 je kostra Next.js, schéma Supabase a testy, které hlídají minimální objednávku 2&nbsp;000&nbsp;Kč a to, že se nákupní cena, interní tag, zdroj a reference dodavatele nevracejí anonymovi ani zákazníkovi. Krok 2 přidává serverového klienta xAI, prompty Dílobota, maskování dodavatelů a interní endpoint `/api/dilobot`.
+E-shop DámeDíly.cz. Krok 1 je kostra Next.js, schéma Supabase a testy, které hlídají minimální objednávku 2&nbsp;000&nbsp;Kč a to, že se nákupní cena, interní tag, zdroj a reference dodavatele nevracejí anonymovi ani zákazníkovi. Krok 2 přidává serverového klienta xAI, prompty Dílobota, maskování dodavatelů a interní endpoint `/api/dilobot`. Krok 3 přidává progresivní hledání `/api/search/stream`.
 
-Zadání produktu je v [docs/MASTERPROMPT.md](docs/MASTERPROMPT.md). Dodatek Právní mantinely má přednost. Rozsah kostry je v [docs/zadani/krok-1.md](docs/zadani/krok-1.md).
+Zadání produktu je v [docs/MASTERPROMPT.md](docs/MASTERPROMPT.md). Dodatek Právní mantinely má přednost, včetně změny bodu 4 o scrapingu. Rozsah kostry je v [docs/zadani/krok-1.md](docs/zadani/krok-1.md).
 
-Vyhledávání u dodavatelů, platby a veřejné UI Dílobota tu záměrně nejsou.
+Platby a veřejné UI Dílobota tu záměrně nejsou.
 
 ## Požadavky
 
@@ -42,7 +42,7 @@ set -a && source .supabase.env && set +a
 npm run test:rls-api
 ```
 
-- `npm test` jsou unit testy (Vitest) s mockovaným xAI. Síť ani databázi nepotřebují.
+- `npm test` jsou unit testy (Vitest) s mockovaným xAI i dodavateli. Síť ani databázi nepotřebují.
 - `npm run test:live` je volitelný smoke test proti `https://api.x.ai/v1/chat/completions`. Bez `XAI_API_KEY` se přeskočí a skončí úspěchem. V CI ho pouští samostatný job, jen když je v repozitáři secret `XAI_API_KEY`.
 - `supabase test db` pouští pgTAP v `supabase/tests` proti lokálnímu Postgresu.
 - `npm run test:rls-api` volá Auth a PostgREST. Bez běžícího Supabase spadne, neskipuje se.
@@ -58,6 +58,22 @@ Klient je v `lib/xai-grok.ts` a smí běžet jen na serveru. Volá `POST /v1/cha
 `/api/dilobot` je `POST` se streamem `text/event-stream`. Tělo je `{ "messages": [{ "role": "user", "content": "…" }] }`. Systémový prompt nastavuje server, zákazník ho nepřepíše. Ve streamu je jen text odpovědi, ne interní uvažování modelu.
 
 Veřejná nabídka z `lib/white-label.ts` má prodejní cenu z `sellingPrice`, stav, údaj použitý/nový a dodací lhůtu. U externího zdroje je to `4–5 pracovních dní` a označení skladu netvrdí, že díl už je v ČR. Vlastní sklad uvádí, že je na provozovně. V typu ani v JSON nejsou `cost_price`, `source_platform`, `internal_project_tag` ani AI skóre.
+
+## Hledání
+
+`POST /api/search/stream` bere JSON `{ "oemNumber", "vehicle", "category", "rawQuery", "queryType" }`. Aspoň jedno z prvních čtyř polí musí být vyplněné. Odpověď je `text/event-stream`: nejdřív `first_found` a nejlevnější plně vyhovující veřejná nabídka (rozpočet `SEARCH_FIRST_BUDGET_MS`, výchozí 1,5&nbsp;s, i z cache nebo vlastního skladu), potom `searching_alternatives` a až dvě další nabídky, nakonec `completed`.
+
+Veřejná nabídka je pořád jen `PublicOffer`. Cizí cena se přepočte denním kurzem ČNB (`https://api.cnb.cz/cnbapi/exrates/daily`) a při jeho výpadku kurzem ECB. Prodejní cena jde přes `sellingPrice`. Fotka z cizí adresy je ve výstupu jen jako `/api/media/…`; proxy ji pošle dál beze změny a při blokaci zdroje nic neopakuje.
+
+Každý zdroj má vypínač `SUPPLIER_*`. Vypnutý zdroj se nevolá. Zapnutý zdroj, který narazí na captchu, přihlášení nebo HTTP 401/403/429, vrátí prázdný seznam a důvod zůstane v serverovém logu. Dotaz zakázaný `robots.txt` se neposílá. Mezi požadavky na stejnou doménu je mezera `SEARCH_MIN_INTERVAL_MS` (výchozí 8&nbsp;s) a odpověď se na `SEARCH_CACHE_TTL_MS` (výchozí 6&nbsp;h) drží v paměti procesu.
+
+Grok řadí jen dvě alternativy na pozadí. Když xAI neodpoví, pořadí určí pravidla: shoda OEM a nižší prodejní cena, přednost má druhý použitý OEM kus a pak nová druhovýroba. Překlad cizího inzerátu jde přes překladač z kroku 2 a úspěšný výsledek se nepočítá znovu. Bez klíče nebo při chybě modelu zůstane text, který už parser ze stránky měl, a stav se nedomýšlí.
+
+Zápis do `search_sessions` proběhne, jen když je nastavené `SUPABASE_URL` a `SUPABASE_SERVICE_ROLE_KEY`. `user_id` se bere z ověřeného Supabase JWT (`SUPABASE_JWT_SECRET`). Bez tokenu je relace anonymní a zákazník ji v RLS nevidí. Do `results` jdou jen veřejné nabídky.
+
+Unit testy konektory mockují. Živý dotaz na zdroje do `npm test` nepatří.
+
+Ověření 11.&nbsp;11.&nbsp;2026: Autodoc, Ovoko/RRR i veřejná stránka B-Parts na identifikovaný požadavek vrací Cloudflare nebo CloudFront blokaci, takže konektor nabídku nevymýšlí. Inter Cars a Auto Partner nemají veřejné API bez smlouvy a zakázané nebo přihlašovací adresy se nevolají. Vlastní sklad vrátí jen řádek, který má vyplněné `part_condition`. Denní kurz ČNB z `api.cnb.cz` je veřejný a načítá se.
 
 ## Přístup k datům
 

@@ -70,6 +70,8 @@ export type PublicOffer = {
   warehouseLabel: string;
   sellingPriceCzk: number;
   deliveryLeadTime: string;
+  /** Jen naše cesty. Cizí adresa fotky se sem nedostane, vodoznak se nemaže. */
+  images: string[];
 };
 
 export type OfferDraft = {
@@ -83,6 +85,7 @@ export type OfferDraft = {
   costPriceCzk: number;
   internalProjectTag: ProjectTag;
   aiScore?: number | null;
+  images?: readonly string[];
 };
 
 const PUBLIC_OFFER_KEYS = [
@@ -97,7 +100,23 @@ const PUBLIC_OFFER_KEYS = [
   "warehouseLabel",
   "sellingPriceCzk",
   "deliveryLeadTime",
+  "images",
 ] as const satisfies readonly (keyof PublicOffer)[];
+
+const IMAGE_SUPPLIER = /\b(?:ovoko|b[-\s]?parts|autodoc|inter\s*cars|auto\s*partner)\b/i;
+
+/** Veřejná fotka je jen naše relativní cesta. Cizí URL ani název zdroje v ní nezůstane. */
+export function publicImages(images: readonly string[] | undefined): string[] {
+  if (!images) return [];
+  const result: string[] = [];
+  for (const image of images) {
+    if (!image.startsWith("/")) continue;
+    if (image.includes("://")) continue;
+    if (IMAGE_SUPPLIER.test(image)) continue;
+    result.push(image);
+  }
+  return result;
+}
 
 export function warehouseLabelFor(source: SourcePlatform): string {
   return WAREHOUSE_LABELS[source];
@@ -172,6 +191,7 @@ export function toPublicOffer(draft: OfferDraft): PublicOffer {
     warehouseLabel,
     sellingPriceCzk: sellingPrice(draft.costPriceCzk),
     deliveryLeadTime,
+    images: publicImages(draft.images),
   };
 
   return offer;

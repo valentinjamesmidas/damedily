@@ -68,6 +68,7 @@ describe("veřejná nabídka", () => {
     expect(offer.conditionDetail).toBe("Drobné stopy po provozu, bez prasklin.");
     expect(offer.originLabel).toBe("OEM");
     expect(offer.deliveryLeadTime).toBe(EXTERNAL_DELIVERY_LEAD_TIME);
+    expect(offer.images).toEqual([]);
 
     const poisoned = {
       ...offer,
@@ -95,6 +96,7 @@ describe("veřejná nabídka", () => {
       "warehouseLabel",
       "sellingPriceCzk",
       "deliveryLeadTime",
+      "images",
     ]);
     const lowered = serialized.toLowerCase();
     for (const key of [
@@ -152,6 +154,15 @@ describe("veřejná nabídka", () => {
     expect(offer.oemNumber).toBeNull();
     expect(offer.descriptionCs).toBeNull();
     expect(offer.conditionLabel).toBe("Nový");
+  });
+
+  it("nechá jen vlastní cestu k fotce a cizí adresu i název zdroje zahodí", () => {
+    const offer = toPublicOffer(
+      draft({
+        images: ["/api/media/abc", "https://cdn.example/a.jpg", "/api/media/autodoc-1", "/sklad/kotouc.jpg"],
+      }),
+    );
+    expect(offer.images).toEqual(["/api/media/abc", "/sklad/kotouc.jpg"]);
   });
 
   it("nezveřejní nabídku bez stavu nebo složenou jen z názvu zdroje", () => {
