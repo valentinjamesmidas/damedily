@@ -43,3 +43,33 @@ jobs:
           source "$RUNNER_TEMP/supabase.env"
           set +a
           npm run test:rls-api
+
+  xai-live:
+    name: Živý smoke test xAI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Zjistit, jestli je nastavený secret XAI_API_KEY
+        id: gate
+        env:
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+        run: |
+          if [ -n "$XAI_API_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Secret XAI_API_KEY není nastavený, živý smoke test se nespouští."
+          fi
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.enabled == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - if: steps.gate.outputs.enabled == 'true'
+        run: npm ci
+      - name: npm run test:live
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+        run: npm run test:live
