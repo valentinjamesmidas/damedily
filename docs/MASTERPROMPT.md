@@ -84,3 +84,6 @@ Doplnil ELON, aby white-label obstál vůči českému a EU spotřebitelskému p
 6. Stripe manual capture: autorizace na kartě obvykle vyprší zhruba po 7 dnech. Kontrolu a capture proto stihnout dřív, nebo včas obnovit autorizaci, a před ostrým provozem to ověřit.
 7. AutomatedProcurementAgent objednává jen v rámci limitů (cena, dodavatel, limit na objednávku). Pokud nákupní cena vzroste nad zaplacenou cenu nebo díl chybí, eskaluje na člověka. Ostré nákupy, ostré platby a nasazení do produkce jen po Valentinově ano.
 8. internal_project_tag, source_platform a cost_price_czk se nikdy nevrací do veřejného API. Ověřit to testy RLS a API.
+
+# ZMĚNA DODATKU (Valentin, 11. 11. 2026, výslovný souhlas v chatu s Alanem)
+Bod 4 se mění: kromě oficiálních API smí systém pro zobrazení reálných nabídek používat i scraping veřejných stránek tržišť a dodavatelů; právní riziko Valentin výslovně přijímá. Podmínky: nízká frekvence a cache, identifikovatelný User-Agent, žádné obcházení captchy, přihlášení, blokací ani technických ochran, žádné ořezávání ani odstraňování vodoznaků a copyrightu, scraper musí jít jedním přepínačem vypnout po zdrojích. Ostatní body dodatku platí beze změny (pravdivost, použitý/nový, dodací lhůta, AI transparentnost, limity nákupního agenta, skryté sloupce).
