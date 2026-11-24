@@ -431,3 +431,66 @@ create trigger auth_users_enforce_email
 revoke all on function private.enforce_auth_user_email() from public;
 grant execute on function private.enforce_auth_user_email() to supabase_auth_admin, authenticated, service_role;
 grant execute on function private.is_admin() to supabase_auth_admin;
+
+-- PostgREST neumí vložit objednávku a řádky jako jeden zápis bez vloženého sloupce.
+-- Tahle funkce je jeden požadavek, takže odložená kontrola minima vidí řádky.
+create or replace function public.insert_order_with_lines(order_row jsonb, lines jsonb)
+returns uuid
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  new_id uuid;
+  line jsonb;
+begin
+  if current_user not in ('postgres', 'service_role', 'supabase_admin')
+     and not (select private.is_admin()) then
+    raise exception 'Objednávku smí založit jen administrátor.'
+      using errcode = '42501';
+  end if;
+
+  insert into public.orders (id, order_number, user_id, total_amount_czk)
+  values (
+    coalesce((order_row ->> 'id')::uuid, gen_random_uuid()),
+    order_row ->> 'order_number',
+    (order_row ->> 'user_id')::uuid,
+    coalesce((order_row ->> 'total_amount_czk')::numeric, 0)
+  )
+  returning id into new_id;
+
+  for line in
+    select value from jsonb_array_elements(coalesce(lines, '[]'::jsonb))
+  loop
+    insert into public.order_items (
+      id,
+      order_id,
+      item_title_cs,
+      oem_number,
+      source_platform,
+      supplier_order_ref,
+      cost_price_czk,
+      selling_price_czk,
+      quantity,
+      line_kind
+    )
+    values (
+      coalesce((line ->> 'id')::uuid, gen_random_uuid()),
+      new_id,
+      line ->> 'item_title_cs',
+      line ->> 'oem_number',
+      (line ->> 'source_platform')::public.source_platform,
+      nullif(line ->> 'supplier_order_ref', ''),
+      (line ->> 'cost_price_czk')::numeric,
+      (line ->> 'selling_price_czk')::numeric,
+      (line ->> 'quantity')::integer,
+      coalesce(nullif(line ->> 'line_kind', ''), 'zbozi')
+    );
+  end loop;
+
+  return new_id;
+end;
+$$;
+
+revoke all on function public.insert_order_with_lines(jsonb, jsonb) from public;
+grant execute on function public.insert_order_with_lines(jsonb, jsonb) to service_role, authenticated;

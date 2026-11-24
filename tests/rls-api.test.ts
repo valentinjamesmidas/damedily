@@ -106,6 +106,20 @@ async function request(
   return { status: response.status, body, text };
 }
 
+async function insertOrder(
+  token: string,
+  key: string,
+  orderRow: Record<string, unknown>,
+  lines: Record<string, unknown>[],
+): Promise<ApiResult> {
+  return request("/rest/v1/rpc/insert_order_with_lines", {
+    method: "POST",
+    key,
+    token,
+    body: { order_row: orderRow, lines },
+  });
+}
+
 function errorCode(result: ApiResult): string | undefined {
   if (result.body && typeof result.body === "object" && !Array.isArray(result.body)) {
     const code = result.body.code;
@@ -267,12 +281,16 @@ describe("Data API neschovává citlivé sloupce jen na klientovi", () => {
     });
     expect([200, 201], item.text).toContain(item.status);
 
-    const order = await rest("orders?select=id,total_amount_czk,order_items(id)", config.serviceKey, config.serviceKey, "POST", {
-      id: ORDER_ID,
-      order_number: `DD-API-${ORDER_ID.slice(0, 8)}`,
-      user_id: CUSTOMER_ID,
-      total_amount_czk: 2500,
-      order_items: [
+    const order = await insertOrder(
+      config.serviceKey,
+      config.serviceKey,
+      {
+        id: ORDER_ID,
+        order_number: `DD-API-${ORDER_ID.slice(0, 8)}`,
+        user_id: CUSTOMER_ID,
+        total_amount_czk: 2500,
+      },
+      [
         {
           id: ORDER_ITEM_ID,
           item_title_cs: "Brzdový kotouč API",
@@ -285,15 +303,19 @@ describe("Data API neschovává citlivé sloupce jen na klientovi", () => {
           line_kind: "zbozi",
         },
       ],
-    });
+    );
     expect([200, 201], order.text).toContain(order.status);
 
-    const otherOrder = await rest("orders?select=id,order_items(id)", config.serviceKey, config.serviceKey, "POST", {
-      id: OTHER_ORDER_ID,
-      order_number: `DD-API-${OTHER_ORDER_ID.slice(0, 8)}`,
-      user_id: OTHER_ID,
-      total_amount_czk: 2100,
-      order_items: [
+    const otherOrder = await insertOrder(
+      config.serviceKey,
+      config.serviceKey,
+      {
+        id: OTHER_ORDER_ID,
+        order_number: `DD-API-${OTHER_ORDER_ID.slice(0, 8)}`,
+        user_id: OTHER_ID,
+        total_amount_czk: 2100,
+      },
+      [
         {
           id: OTHER_ORDER_ITEM_ID,
           item_title_cs: "Jiná položka API",
@@ -306,7 +328,7 @@ describe("Data API neschovává citlivé sloupce jen na klientovi", () => {
           line_kind: "zbozi",
         },
       ],
-    });
+    );
     expect([200, 201], otherOrder.text).toContain(otherOrder.status);
   });
 
@@ -430,12 +452,16 @@ describe("Data API neschovává citlivé sloupce jen na klientovi", () => {
     expect(profileEmail.body).toEqual([{ email: customerEmail }]);
 
     const lowId = randomUUID();
-    const tooSmall = await rest("orders?select=id,order_items(id)", config.serviceKey, config.serviceKey, "POST", {
-      id: lowId,
-      order_number: `DD-LOW-${lowId.slice(0, 8)}`,
-      user_id: CUSTOMER_ID,
-      total_amount_czk: 1999,
-      order_items: [
+    const tooSmall = await insertOrder(
+      config.serviceKey,
+      config.serviceKey,
+      {
+        id: lowId,
+        order_number: `DD-LOW-${lowId.slice(0, 8)}`,
+        user_id: CUSTOMER_ID,
+        total_amount_czk: 1999,
+      },
+      [
         {
           item_title_cs: "Málo",
           oem_number: "OEM-LOW",
@@ -446,17 +472,21 @@ describe("Data API neschovává citlivé sloupce jen na klientovi", () => {
           line_kind: "zbozi",
         },
       ],
-    });
+    );
     expect(tooSmall.status).toBeGreaterThanOrEqual(400);
     expect(errorCode(tooSmall)).toBe("23514");
 
     const shipId = randomUUID();
-    const shipping = await rest("orders?select=id,order_items(id)", config.serviceKey, config.serviceKey, "POST", {
-      id: shipId,
-      order_number: `DD-SHIP-${shipId.slice(0, 8)}`,
-      user_id: CUSTOMER_ID,
-      total_amount_czk: 2100,
-      order_items: [
+    const shipping = await insertOrder(
+      config.serviceKey,
+      config.serviceKey,
+      {
+        id: shipId,
+        order_number: `DD-SHIP-${shipId.slice(0, 8)}`,
+        user_id: CUSTOMER_ID,
+        total_amount_czk: 2100,
+      },
+      [
         {
           item_title_cs: "Zboží",
           oem_number: "OEM-SHIP",
@@ -476,15 +506,19 @@ describe("Data API neschovává citlivé sloupce jen na klientovi", () => {
           line_kind: "doprava",
         },
       ],
-    });
+    );
     expect(shipping.status).toBeGreaterThanOrEqual(400);
     expect(errorCode(shipping)).toBe("23514");
 
-    const enough = await rest("orders?select=id,total_amount_czk,order_items(id)", adminToken, config.anonKey, "POST", {
-      order_number: `DD-OK-${lowId.slice(0, 8)}`,
-      user_id: CUSTOMER_ID,
-      total_amount_czk: 0,
-      order_items: [
+    const enough = await insertOrder(
+      adminToken,
+      config.anonKey,
+      {
+        order_number: `DD-OK-${lowId.slice(0, 8)}`,
+        user_id: CUSTOMER_ID,
+        total_amount_czk: 0,
+      },
+      [
         {
           item_title_cs: "Zboží",
           oem_number: "OEM-OK",
@@ -504,13 +538,9 @@ describe("Data API neschovává citlivé sloupce jen na klientovi", () => {
           line_kind: "sluzba",
         },
       ],
-    });
+    );
     expect([200, 201], enough.text).toContain(enough.status);
-    const created = Array.isArray(enough.body) ? enough.body[0] : null;
-    const createdId =
-      created && typeof created === "object" && !Array.isArray(created) && typeof created.id === "string"
-        ? created.id
-        : null;
+    const createdId = typeof enough.body === "string" ? enough.body : null;
     if (createdId) {
       const stored = await rest(`orders?id=eq.${createdId}&select=total_amount_czk`, config.serviceKey, config.serviceKey);
       expect(rowsOf(stored.body).map((row) => moneyRow(row, ["total_amount_czk"]))).toEqual([
