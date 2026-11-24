@@ -96,12 +96,39 @@ export function createSupabaseOemCache(
           payload: row.payload,
           fetched_at: row.fetchedAt,
           ttl: `${Math.round(row.ttlMs / 1000)} seconds`,
+          in_flight_until: null,
         }),
         signal: AbortSignal.timeout(4_000),
       });
       if (!response.ok) {
         throw new Error(`oem_cache se nepodařilo zapsat (${response.status}).`);
       }
+    },
+
+    async tryLease(oem, source, until) {
+      const target = endpoint(env);
+      if (!target || !isCacheableOem(oem) || !isCacheableSource(source)) return false;
+      const response = await fetchImpl(`${target.url}/rest/v1/rpc/try_lease_oem_cache`, {
+        method: "POST",
+        headers: headers(target.key, true),
+        body: JSON.stringify({ p_oem: oem, p_source: source, p_until: until.toISOString() }),
+        signal: AbortSignal.timeout(4_000),
+      });
+      if (!response.ok) throw new Error(`try_lease_oem_cache selhal (${response.status}).`);
+      const body: unknown = await response.json();
+      return body === true || body === "true";
+    },
+
+    async releaseLease(oem, source) {
+      const target = endpoint(env);
+      if (!target || !isCacheableOem(oem) || !isCacheableSource(source)) return;
+      const response = await fetchImpl(`${target.url}/rest/v1/rpc/release_lease_oem_cache`, {
+        method: "POST",
+        headers: headers(target.key, true),
+        body: JSON.stringify({ p_oem: oem, p_source: source }),
+        signal: AbortSignal.timeout(4_000),
+      });
+      if (!response.ok) throw new Error(`release_lease_oem_cache selhal (${response.status}).`);
     },
   };
 }

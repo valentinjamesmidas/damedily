@@ -116,6 +116,7 @@ describe("createSupabaseOemCache", () => {
       payload: [offer],
       fetched_at: "2026-11-24T12:00:00.000Z",
       ttl: "3600 seconds",
+      in_flight_until: null,
     });
 
     const failing = createSupabaseOemCache(env, async () => new Response("tajné tělo", { status: 500 }));

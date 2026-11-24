@@ -93,7 +93,7 @@ Unit testy konektory mockují. Živý dotaz na zdroje do `npm test` nepatří.
 
 `normalizeOem` dá velká písmena a odebere mezery, tečky a pomlčky. Jiné znaky nechá. Do tabulky `oem_cache` jdou jen klíče z A–Z a číslic, nejvýš 80 znaků (migrace `005_oem_cache.sql`). Řádek drží `payload` jsonb a platí `fetched_at + ttl`. Čte a zapisuje ho jen `service_role`. Anon a zákazník nemají grant ani politiku.
 
-Fronta je `JobQueue`. Testy mají paměťovou implementaci. `createCloudflareJobQueue` pošle JSON do bindingu Cloudflare Queues; wrangler ani nasazení k tomu nejsou. Úloha je idempotentní podle `(oem, source)`: druhý enqueue se neodešle a worker při čerstvé cache zdroj znovu nevolá. Vypnutý zdroj se jako prázdný ceník neukládá.
+Fronta je `JobQueue`. Testy mají paměťovou implementaci. `createCloudflareJobQueue` pošle JSON do bindingu Cloudflare Queues; wrangler ani nasazení k tomu nejsou. Úloha je idempotentní podle `(oem, source)`: worker při čerstvé cache nebo platném lease zdroj znovu nevolá. Lease drží `try_lease_oem_cache` a po chybě ho pustí `release_lease_oem_cache`. Vypnutý zdroj se jako prázdný ceník neukládá.
 
 `SOURCE_<ID>` je vypínač (`SOURCE_ALLEGRO`). `0`, `false` nebo `no` zdroj vypne, chybějící proměnná ho nechá zapnutý. Bez `ALLEGRO_CLIENT_ID` a `ALLEGRO_CLIENT_SECRET` se Allegro vypne a nespadne. `SOURCE_BLOCK_THRESHOLD` je počet odpovědí 403 nebo captcha, po kterém se zdroj vypne a důvod se zapíše do logu. Výchozí je 3, tedy třetí taková odpověď. `OEM_CACHE_TTL_MS` je platnost cache v milisekundách, výchozí 6 hodin.
 

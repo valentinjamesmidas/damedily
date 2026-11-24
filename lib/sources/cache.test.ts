@@ -64,4 +64,12 @@ describe("MemoryOemCache", () => {
     const cache = new MemoryOemCache();
     await expect(cache.write(row({ oem: "A/B" }))).rejects.toThrow(/cacheovatelné OEM/);
   });
+
+  it("lease drží podle předaného času, ne podle hodin procesu", async () => {
+    const cache = new MemoryOemCache();
+    const heldUntil = new Date("2020-01-01T00:01:00.000Z");
+    const during = new Date("2020-01-01T00:00:30.000Z");
+    expect(await cache.tryLease("LEASECLOCK", "allegro", heldUntil, new Date("2020-01-01T00:00:00.000Z"))).toBe(true);
+    expect(await cache.tryLease("LEASECLOCK", "allegro", heldUntil, during)).toBe(false);
+  });
 });

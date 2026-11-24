@@ -96,11 +96,13 @@ describe("consumeOemQueueBatch", () => {
       [
         {
           body: { oem: "1k0 615.301", source: "allegro" },
+          attempts: 1,
           ack: () => acks.push("first"),
           retry: () => retries.push("first"),
         },
         {
           body: { oem: "1K0615301", source: "allegro" },
+          attempts: 1,
           ack: () => acks.push("second"),
           retry: () => retries.push("second"),
         },
@@ -117,6 +119,10 @@ describe("consumeOemQueueBatch", () => {
         async read() {
           return null;
         },
+        async tryLease() {
+          return true;
+        },
+        async releaseLease() {},
         async write() {
           throw new Error("db");
         },
@@ -128,6 +134,7 @@ describe("consumeOemQueueBatch", () => {
       [
         {
           body: { oem: "JINE1", source: "allegro" },
+          attempts: 1,
           ack: () => again.push("ack"),
           retry: () => againRetry.push("retry"),
         },
@@ -169,6 +176,7 @@ describe("consumeOemQueueBatch", () => {
       [
         {
           body: { oem: "1K0615301", source: "allegro", attempt: 3 },
+          attempts: 4,
           ack() {},
           retry(options) {
             delays.push(options?.delaySeconds ?? 0);
@@ -195,5 +203,38 @@ describe("consumeOemQueueBatch", () => {
     expect(delays).toEqual([retryDelaySeconds(3, 12)]);
     expect(retryDelaySeconds(3, 12)).toBe(12);
     expect(retryDelaySeconds(3)).toBe(8);
+  });
+
+  it("páté doručení z fronty čeká 16 sekund", async () => {
+    const delays: number[] = [];
+    await consumeOemQueueBatch(
+      [
+        {
+          body: { oem: "1K0615301", source: "allegro" },
+          attempts: 5,
+          ack() {},
+          retry(options) {
+            delays.push(options?.delaySeconds ?? 0);
+          },
+        },
+      ],
+      {
+        sources: [
+          {
+            id: "allegro",
+            async health() {
+              return { ok: true, detail: "zapnuto" };
+            },
+            async searchByOem() {
+              return { ok: false as const, error: "http-500", retryable: true };
+            },
+          },
+        ],
+        cache: new MemoryOemCache(),
+        ttlMs: 3_600_000,
+        now,
+      },
+    );
+    expect(delays).toEqual([16]);
   });
 });

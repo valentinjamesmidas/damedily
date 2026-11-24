@@ -53,21 +53,19 @@ export async function runOemJob(job: OemJob, deps: OemWorkerDeps): Promise<OemJo
   const fresh = await deps.cache.read(canonical.oem, canonical.source, now);
   if (fresh) return "cached";
 
-  if (deps.cache.tryLease) {
-    const until = new Date(now.getTime() + (deps.leaseMs ?? 60_000));
-    const acquired = await deps.cache.tryLease(canonical.oem, canonical.source, until);
-    if (!acquired) return "leased";
-  }
+  const until = new Date(now.getTime() + (deps.leaseMs ?? 60_000));
+  const acquired = await deps.cache.tryLease(canonical.oem, canonical.source, until, now);
+  if (!acquired) return "leased";
 
   const source = deps.sources.find((item) => item.id === canonical.source);
   if (!source) {
-    await deps.cache.releaseLease?.(canonical.oem, canonical.source);
+    await deps.cache.releaseLease(canonical.oem, canonical.source);
     return "unknown-source";
   }
 
   const before = await source.health();
   if (!before.ok) {
-    await deps.cache.releaseLease?.(canonical.oem, canonical.source);
+    await deps.cache.releaseLease(canonical.oem, canonical.source);
     return "disabled";
   }
 
@@ -75,31 +73,36 @@ export async function runOemJob(job: OemJob, deps: OemWorkerDeps): Promise<OemJo
   try {
     result = await source.searchByOem(job.raw ?? job.oem);
   } catch (error) {
-    await deps.cache.releaseLease?.(canonical.oem, canonical.source);
+    await deps.cache.releaseLease(canonical.oem, canonical.source);
     const message = error instanceof Error ? error.message : "zdroj spadl";
     return { error: message, attempt };
   }
 
   if (!result.ok) {
-    await deps.cache.releaseLease?.(canonical.oem, canonical.source);
+    await deps.cache.releaseLease(canonical.oem, canonical.source);
     if (!result.retryable) return "disabled";
     return failureOf(result, attempt);
   }
 
   const after = await source.health();
   if (!after.ok) {
-    await deps.cache.releaseLease?.(canonical.oem, canonical.source);
+    await deps.cache.releaseLease(canonical.oem, canonical.source);
     return "disabled";
   }
 
   const fetchedAt = (deps.now ?? (() => new Date()))();
-  await deps.cache.write({
-    oem: canonical.oem,
-    source: canonical.source,
-    payload: result.offers,
-    fetchedAt: fetchedAt.toISOString(),
-    ttlMs: deps.ttlMs,
-  });
+  try {
+    await deps.cache.write({
+      oem: canonical.oem,
+      source: canonical.source,
+      payload: result.offers,
+      fetchedAt: fetchedAt.toISOString(),
+      ttlMs: deps.ttlMs,
+    });
+  } catch (error) {
+    await deps.cache.releaseLease(canonical.oem, canonical.source);
+    throw error;
+  }
   return "fetched";
 }
 
@@ -114,28 +117,35 @@ export async function drainInMemoryQueue(queue: ReleasableJobQueue, deps: OemWor
 
 export type CloudflareQueueMessage = {
   body: OemJob;
+  /** Kolikrát fronta zprávu doručila, včetně tohoto pokusu. První doručení je 1. */
+  attempts: number;
   ack(): void;
   retry(options?: { delaySeconds?: number }): void;
 };
 
-/** Tvar spotřebitele Cloudflare Queues. Nasazení workeru tu není. */
+/**
+ * Tvar spotřebitele Cloudflare Queues. Nasazení workeru tu není.
+ * `leased` se potvrzuje: jiný worker už klíč stahuje. Nové doručení teď
+ * by jen čekalo na stejný zámek. Až lease vyprší, další úloha může pokračovat.
+ */
 export async function consumeOemQueueBatch(
   messages: readonly CloudflareQueueMessage[],
   deps: OemWorkerDeps,
 ): Promise<void> {
   for (const message of messages) {
+    const delivered = Math.max(0, message.attempts - 1);
     try {
       const result = await runOemJob(message.body, deps);
       if (typeof result === "object") {
         message.retry({
-          delaySeconds: retryDelaySeconds(result.attempt, result.retryAfterSeconds),
+          delaySeconds: retryDelaySeconds(delivered, result.retryAfterSeconds),
         });
         continue;
       }
       message.ack();
     } catch {
       message.retry({
-        delaySeconds: retryDelaySeconds(message.body.attempt ?? 0),
+        delaySeconds: retryDelaySeconds(delivered),
       });
     }
   }

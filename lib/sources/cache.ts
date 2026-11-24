@@ -13,9 +13,9 @@ export interface OemCache {
   /** Čerstvý řádek, nebo null když chybí, vypršel, nebo nejde přečíst. */
   read(oem: string, source: string, now: Date): Promise<OemCacheRow | null>;
   write(row: OemCacheRow): Promise<void>;
-  /** true, když tento worker smí zdroj zavolat. false, když lease drží někdo jiný. */
-  tryLease?(oem: string, source: string, until: Date): Promise<boolean>;
-  releaseLease?(oem: string, source: string): Promise<void>;
+  /** true, když tento worker smí zdroj zavolat. false, když je cache čerstvá nebo lease drží někdo jiný. */
+  tryLease(oem: string, source: string, until: Date, now: Date): Promise<boolean>;
+  releaseLease(oem: string, source: string): Promise<void>;
 }
 
 export function cacheKey(oem: string, source: string): string {
@@ -56,7 +56,7 @@ export function parseCachedOffers(value: unknown): SourceOffer[] | null {
   return value;
 }
 
-/** Paměťová cache pro testy a worker bez Postgresu. */
+/** Paměťová cache jen pro testy. Čas lease bere z parametru `now`, ne z hodin procesu. */
 export class MemoryOemCache implements OemCache {
   readonly rows = new Map<string, OemCacheRow>();
   private readonly leases = new Map<string, number>();
@@ -75,10 +75,12 @@ export class MemoryOemCache implements OemCache {
     this.rows.set(cacheKey(row.oem, row.source), row);
   }
 
-  async tryLease(oem: string, source: string, until: Date): Promise<boolean> {
+  async tryLease(oem: string, source: string, until: Date, now: Date): Promise<boolean> {
     const key = cacheKey(oem, source);
+    const row = this.rows.get(key);
+    if (row && cacheRowFresh(row, now)) return false;
     const held = this.leases.get(key);
-    if (held !== undefined && held > Date.now()) return false;
+    if (held !== undefined && held > now.getTime()) return false;
     this.leases.set(key, until.getTime());
     return true;
   }
