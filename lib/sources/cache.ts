@@ -13,6 +13,9 @@ export interface OemCache {
   /** Čerstvý řádek, nebo null když chybí, vypršel, nebo nejde přečíst. */
   read(oem: string, source: string, now: Date): Promise<OemCacheRow | null>;
   write(row: OemCacheRow): Promise<void>;
+  /** true, když tento worker smí zdroj zavolat. false, když lease drží někdo jiný. */
+  tryLease?(oem: string, source: string, until: Date): Promise<boolean>;
+  releaseLease?(oem: string, source: string): Promise<void>;
 }
 
 export function cacheKey(oem: string, source: string): string {
@@ -56,6 +59,7 @@ export function parseCachedOffers(value: unknown): SourceOffer[] | null {
 /** Paměťová cache pro testy a worker bez Postgresu. */
 export class MemoryOemCache implements OemCache {
   readonly rows = new Map<string, OemCacheRow>();
+  private readonly leases = new Map<string, number>();
 
   async read(oem: string, source: string, now: Date): Promise<OemCacheRow | null> {
     const row = this.rows.get(cacheKey(oem, source));
@@ -67,6 +71,19 @@ export class MemoryOemCache implements OemCache {
     if (!isCacheableOem(row.oem) || !isCacheableSource(row.source)) {
       throw new TypeError("Do cache patří jen cacheovatelné OEM a id zdroje.");
     }
+    this.leases.delete(cacheKey(row.oem, row.source));
     this.rows.set(cacheKey(row.oem, row.source), row);
+  }
+
+  async tryLease(oem: string, source: string, until: Date): Promise<boolean> {
+    const key = cacheKey(oem, source);
+    const held = this.leases.get(key);
+    if (held !== undefined && held > Date.now()) return false;
+    this.leases.set(key, until.getTime());
+    return true;
+  }
+
+  async releaseLease(oem: string, source: string): Promise<void> {
+    this.leases.delete(cacheKey(oem, source));
   }
 }

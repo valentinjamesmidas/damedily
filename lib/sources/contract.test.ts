@@ -5,8 +5,8 @@ import { sellingPrice } from "@/lib/pricing";
 import { toPublicOffer } from "@/lib/white-label";
 import { ALLEGRO_LISTING_URL, ALLEGRO_TOKEN_URL, createAllegroSource } from "./allegro";
 import { normalizeOem } from "./oem";
-import { purchasePriceReachedPublicOffer } from "./public-boundary";
-import { isSourceOffer, type PartSource, type SourceOffer } from "./types";
+import { purchasePriceReachedPublicOffer } from "@/tests/helpers/public-boundary";
+import { isSourceOffer, type PartSource, type SourceSearchResult } from "./types";
 
 const RAW_OEM = "1k0 615.301-ab";
 
@@ -24,11 +24,13 @@ function createFake(enabled: boolean): PartSource {
     async health() {
       return enabled ? { ok: true, detail: "zapnuto" } : { ok: false, detail: "vypnuto" };
     },
-    async searchByOem(oem: string): Promise<SourceOffer[]> {
-      if (!enabled) return [];
+    async searchByOem(oem: string): Promise<SourceSearchResult> {
+      if (!enabled) return { ok: true, offers: [] };
       const normalized = normalizeOem(oem);
-      if (!normalized) return [];
-      return [
+      if (!normalized) return { ok: true, offers: [] };
+      return {
+        ok: true,
+        offers: [
         {
           source: "fake",
           oem: normalized,
@@ -39,7 +41,8 @@ function createFake(enabled: boolean): PartSource {
           url: "https://example.test/offer/1",
           fetchedAt: "2026-11-24T12:00:00.000Z",
         },
-      ];
+      ],
+      };
     },
   };
 }
@@ -86,14 +89,17 @@ function definePartSourceContract(label: string, create: (enabled: boolean) => P
       expect(up.detail.length).toBeGreaterThan(0);
       expect(down.ok).toBe(false);
       expect(down.detail.length).toBeGreaterThan(0);
-      expect(await disabled.searchByOem(RAW_OEM)).toEqual([]);
-      expect(await disabled.searchByOem(" . - ")).toEqual([]);
+      expect(await disabled.searchByOem(RAW_OEM)).toEqual({ ok: true, offers: [] });
+      expect(await disabled.searchByOem(" . - ")).toEqual({ ok: true, offers: [] });
     });
 
     it("vrátí normalizované nabídky a nákupní cenu nenechá ve veřejné nabídce", async () => {
       const source = create(true);
-      expect(await source.searchByOem(" . - ")).toEqual([]);
-      const offers = await source.searchByOem(RAW_OEM);
+      expect(await source.searchByOem(" . - ")).toEqual({ ok: true, offers: [] });
+      const found = await source.searchByOem(RAW_OEM);
+      expect(found.ok).toBe(true);
+      if (!found.ok) return;
+      const offers = found.offers;
       expect(offers.length).toBeGreaterThan(0);
       for (const offer of offers) {
         expect(isSourceOffer(offer)).toBe(true);

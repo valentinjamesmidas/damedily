@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { sellingPrice } from "@/lib/pricing";
 import { serializePublicOffer, toPublicOffer, type PublicOffer } from "@/lib/white-label";
-import { purchasePriceReachedPublicOffer } from "./public-boundary";
+import { purchasePriceReachedPublicOffer } from "@/tests/helpers/public-boundary";
 import type { SourceOffer } from "./types";
 
 type PurchaseKey =

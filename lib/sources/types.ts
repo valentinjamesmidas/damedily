@@ -39,9 +39,38 @@ export type SourceHealth = {
   detail: string;
 };
 
+/** Úspěch. Prázdné `offers` znamená, že zdroj nic nenašel. */
+export type SourceSearchSuccess = {
+  ok: true;
+  offers: SourceOffer[];
+};
+
+/** Chyba zdroje. Do cache se nezapisuje. `retryable` má fronta zkusit znovu. */
+export type SourceSearchFailure = {
+  ok: false;
+  error: string;
+  retryable: boolean;
+  retryAfterSeconds?: number;
+};
+
+export type SourceSearchResult = SourceSearchSuccess | SourceSearchFailure;
+
+export function sourceFailure(
+  error: string,
+  options: { retryable?: boolean; retryAfterSeconds?: number } = {},
+): SourceSearchFailure {
+  const failure: SourceSearchFailure = {
+    ok: false,
+    error,
+    retryable: options.retryable ?? true,
+  };
+  if (options.retryAfterSeconds !== undefined) failure.retryAfterSeconds = options.retryAfterSeconds;
+  return failure;
+}
+
 export interface PartSource {
   readonly id: string;
-  searchByOem(oem: string): Promise<SourceOffer[]>;
+  searchByOem(oem: string): Promise<SourceSearchResult>;
   health(): Promise<SourceHealth>;
 }
 

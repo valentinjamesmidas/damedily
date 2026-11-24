@@ -49,4 +49,21 @@ describe("BlockGate", () => {
     expect(lines).toHaveLength(1);
     expect(gate.isTripped("jiny")).toBe(false);
   });
+
+  it("staré odpovědi mimo okno se do prahu nepočítají a reset vypnutí smaže", () => {
+    let now = new Date("2026-11-24T12:00:00.000Z");
+    const gate = new BlockGate(3, () => {}, 60_000, () => now);
+    gate.record("allegro", "http-403");
+    gate.record("allegro", "http-403");
+    now = new Date("2026-11-24T12:02:00.000Z");
+    gate.record("allegro", "captcha");
+    expect(gate.count("allegro")).toBe(1);
+    expect(gate.isTripped("allegro")).toBe(false);
+    gate.record("allegro", "http-403");
+    gate.record("allegro", "http-403");
+    expect(gate.isTripped("allegro")).toBe(true);
+    gate.reset("allegro");
+    expect(gate.isTripped("allegro")).toBe(false);
+    expect(gate.count("allegro")).toBe(0);
+  });
 });

@@ -25,6 +25,7 @@ describe("mapování Allegra", () => {
   it("ze stavu filtru vezme used a aftermarket a nowe nechá být", () => {
     expect(conditionFromStanValue("używane")).toBe("used");
     expect(conditionFromStanValue("Używane")).toBe("used");
+    expect(conditionFromStanValue("Używany")).toBe("used");
     expect(conditionFromStanValue("used")).toBe("used");
     expect(conditionFromStanValue("zamiennik")).toBe("aftermarket");
     expect(conditionFromStanValue("aftermarket")).toBe("aftermarket");
@@ -116,7 +117,7 @@ describe("AllegroSource", () => {
       ok: false,
       detail: "chybí ALLEGRO_CLIENT_ID nebo ALLEGRO_CLIENT_SECRET",
     });
-    expect(await source.searchByOem("1K0615301")).toEqual([]);
+    expect(await source.searchByOem("1K0615301")).toEqual({ ok: true, offers: [] });
     expect(called).toBe(false);
   });
 
@@ -131,7 +132,7 @@ describe("AllegroSource", () => {
     });
     expect((await source.health()).ok).toBe(false);
     expect((await source.health()).detail).toContain("SOURCE_ALLEGRO");
-    expect(await source.searchByOem("1K0615301")).toEqual([]);
+    expect(await source.searchByOem("1K0615301")).toEqual({ ok: true, offers: [] });
     expect(called).toBe(false);
   });
 
@@ -147,7 +148,10 @@ describe("AllegroSource", () => {
     expect(await source.health()).toEqual({ ok: true, detail: "klíče jsou nastavené" });
     expect(calls).toHaveLength(0);
 
-    const offers = await source.searchByOem("1k0 615.301");
+    const found = await source.searchByOem("1K0615301");
+    expect(found.ok).toBe(true);
+    if (!found.ok) throw new Error(found.error);
+    const offers = found.offers;
     expect(offers.map((offer) => offer.condition)).toEqual(["used", "aftermarket"]);
     expect(offers.map((offer) => offer.oem)).toEqual(["1K0615301", "1K0615301"]);
     expect(offers.map((offer) => offer.url)).toEqual([
@@ -179,10 +183,11 @@ describe("AllegroSource", () => {
     expect(listingUrl.searchParams.get("phrase")).toBe("1K0615301");
     expect(listingUrl.searchParams.get("fallback")).toBe("false");
 
-    expect(await source.searchByOem("1K0.615.301")).toHaveLength(2);
+    const again = await source.searchByOem("1K0615301");
+    expect(again.ok && again.offers).toHaveLength(2);
     expect(calls.filter((call) => call.url === ALLEGRO_TOKEN_URL)).toHaveLength(1);
     expect(lines).toEqual([]);
-    expect(await source.searchByOem(" - . ")).toEqual([]);
+    expect(await source.searchByOem(" - . ")).toEqual({ ok: true, offers: [] });
   });
 
   it("403 a captcha počítá, HTML nečte a po prahu přestane volat", async () => {
@@ -204,13 +209,12 @@ describe("AllegroSource", () => {
       fetchImpl: blocked.fetchImpl,
       log: (message) => lines.push(message),
     });
-    expect(await source.searchByOem("1K0615301")).toEqual([]);
-    expect(blocked.calls.some((call) => call.url.includes("parameter."))).toBe(false);
+    expect(await source.searchByOem("1K0615301")).toMatchObject({ ok: false, error: "http-403", retryable: true });
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain("neobcházíme");
     expect((await source.health()).ok).toBe(false);
     const after = blocked.calls.length;
-    expect(await source.searchByOem("1K0615301")).toEqual([]);
+    expect(await source.searchByOem("1K0615301")).toEqual({ ok: true, offers: [] });
     expect(blocked.calls).toHaveLength(after);
 
     const captcha = scriptedFetch({
@@ -227,7 +231,7 @@ describe("AllegroSource", () => {
       fetchImpl: captcha.fetchImpl,
       log: (message) => captchaLog.push(message),
     });
-    expect(await captchaSource.searchByOem("1K0615301")).toEqual([]);
+    expect(await captchaSource.searchByOem("1K0615301")).toMatchObject({ ok: false, error: "captcha" });
     expect(captchaLog[0]).toContain("captcha");
     expect((await captchaSource.health()).detail).toContain("403 nebo captcha");
   });
@@ -240,7 +244,7 @@ describe("AllegroSource", () => {
       env: { ALLEGRO_CLIENT_ID: "client", ALLEGRO_CLIENT_SECRET: "secret" },
       fetchImpl: redirected.fetchImpl,
     });
-    expect(await source.searchByOem("1K0615301")).toEqual([]);
+    expect(await source.searchByOem("1K0615301")).toMatchObject({ ok: false, error: "přesměrování, nepokračujeme" });
     expect(redirected.calls).toHaveLength(1);
     expect((await source.health()).ok).toBe(true);
 
@@ -252,6 +256,87 @@ describe("AllegroSource", () => {
       env: { ALLEGRO_CLIENT_ID: "client", ALLEGRO_CLIENT_SECRET: "secret" },
       fetchImpl: broken.fetchImpl,
     });
-    expect(await brokenSource.searchByOem("1K0615301")).toEqual([]);
+    expect(await brokenSource.searchByOem("1K0615301")).toMatchObject({ ok: false, error: "rozbitý JSON výpisu" });
+  });
+
+  it("bez fetchImpl na ostré API nesáhne", async () => {
+    const source = createAllegroSource({
+      env: { ALLEGRO_CLIENT_ID: "client", ALLEGRO_CLIENT_SECRET: "secret" },
+    });
+    expect((await source.health()).detail).toContain("ostré API se nevolá");
+    expect(await source.searchByOem("1K0615301")).toEqual({ ok: true, offers: [] });
+  });
+
+  it("500, 429, 401 a timeout jsou chyba, ne prázdný ceník", async () => {
+    const env = { ALLEGRO_CLIENT_ID: "client", ALLEGRO_CLIENT_SECRET: "secret" };
+    const tokenPage = { status: 200, body: fixture("token.json"), headers: { "content-type": "application/json" } };
+
+    const serverError = scriptedFetch({
+      token: tokenPage,
+      listing: { status: 500, body: "{}", headers: { "content-type": "application/json" } },
+    });
+    expect(await createAllegroSource({ env, fetchImpl: serverError.fetchImpl }).searchByOem("1K0615301")).toMatchObject({
+      ok: false,
+      error: "http-500",
+      retryable: true,
+    });
+
+    const limited = scriptedFetch({
+      token: tokenPage,
+      listing: { status: 429, body: "{}", headers: { "content-type": "application/json", "retry-after": "12" } },
+    });
+    expect(await createAllegroSource({ env, fetchImpl: limited.fetchImpl }).searchByOem("1K0615301")).toMatchObject({
+      ok: false,
+      error: "http-429",
+      retryAfterSeconds: 12,
+    });
+
+    let tokens = 0;
+    const unauthorized: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url === ALLEGRO_TOKEN_URL) {
+        tokens += 1;
+        return new Response(fixture("token.json"), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response("{}", { status: 401, headers: { "content-type": "application/json" } });
+    };
+    expect(await createAllegroSource({ env, fetchImpl: unauthorized }).searchByOem("1K0615301")).toMatchObject({
+      ok: false,
+      error: "http-401",
+    });
+    expect(tokens).toBe(2);
+
+    const timedOut: typeof fetch = async (_input, init) => {
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+      throw Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" });
+    };
+    expect(await createAllegroSource({ env, fetchImpl: timedOut }).searchByOem("1K0615301")).toMatchObject({
+      ok: false,
+      error: "timeout",
+    });
+
+    const offline: typeof fetch = async () => {
+      throw new TypeError("fetch failed");
+    };
+    expect(await createAllegroSource({ env, fetchImpl: offline }).searchByOem("1K0615301")).toMatchObject({
+      ok: false,
+      error: "síť zdroje selhala",
+    });
+  });
+
+  it("pošle původní i kompaktní OEM", async () => {
+    const { calls, fetchImpl } = scriptedFetch(happyPages());
+    const source = createAllegroSource({
+      env: { ALLEGRO_CLIENT_ID: "client", ALLEGRO_CLIENT_SECRET: "secret" },
+      fetchImpl,
+      now: () => new Date(fetchedAt),
+    });
+    const found = await source.searchByOem("1K0 615 301");
+    expect(found.ok).toBe(true);
+    const phrases = calls
+      .map((call) => new URL(call.url))
+      .filter((url) => url.origin + url.pathname === ALLEGRO_LISTING_URL && !url.searchParams.has("parameter.11323"))
+      .map((url) => url.searchParams.get("phrase"));
+    expect(phrases).toEqual(["1K0 615 301", "1K0615301"]);
   });
 });

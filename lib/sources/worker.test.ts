@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { MemoryOemCache } from "./cache";
 import { InMemoryJobQueue } from "./queue";
 import type { PartSource, SourceOffer } from "./types";
-import { consumeOemQueueBatch, drainInMemoryQueue, runOemJob } from "./worker";
+import { consumeOemQueueBatch, drainInMemoryQueue, retryDelaySeconds, runOemJob } from "./worker";
 
 const fetchedAt = "2026-11-24T12:00:00.000Z";
 const now = () => new Date(fetchedAt);
@@ -28,7 +28,7 @@ function source(options: { enabled?: boolean; id?: string } = {}): PartSource & 
     },
     async searchByOem() {
       api.calls += 1;
-      return [offer];
+      return { ok: true as const, offers: [offer] };
     },
   };
   return api;
@@ -63,7 +63,7 @@ describe("runOemJob", () => {
       },
       async searchByOem() {
         enabled = false;
-        return [];
+        return { ok: true as const, offers: [] };
       },
     };
     const deps = { sources: [allegro], cache: new MemoryOemCache(), ttlMs: 3_600_000, now };
@@ -78,8 +78,8 @@ describe("drainInMemoryQueue", () => {
     const queue = new InMemoryJobQueue();
     const deps = { sources: [allegro], cache: new MemoryOemCache(), ttlMs: 3_600_000, now };
     expect((await queue.enqueue({ oem: "1k0 615.301", source: "allegro" })).accepted).toBe(true);
-    expect((await queue.enqueue({ oem: "1K0615301", source: "allegro" })).accepted).toBe(false);
-    expect(await drainInMemoryQueue(queue, deps)).toEqual(["fetched"]);
+    expect((await queue.enqueue({ oem: "1K0615301", source: "allegro" })).accepted).toBe(true);
+    expect(await drainInMemoryQueue(queue, deps)).toEqual(["fetched", "cached"]);
     expect((await queue.enqueue({ oem: "1K0-615-301", source: "allegro" })).accepted).toBe(true);
     expect(await drainInMemoryQueue(queue, deps)).toEqual(["cached"]);
     expect(allegro.calls).toBe(1);
@@ -136,5 +136,64 @@ describe("consumeOemQueueBatch", () => {
     );
     expect(again).toEqual([]);
     expect(againRetry).toEqual(["retry"]);
+  });
+
+  it("chybu nezapíše do cache a 429 předá Retry-After", async () => {
+    const failures = ["http-500", "http-429", "http-401", "timeout", "rozbitý JSON"] as const;
+    for (const error of failures) {
+      const cache = new MemoryOemCache();
+      const allegro: PartSource = {
+        id: "allegro",
+        async health() {
+          return { ok: true, detail: "zapnuto" };
+        },
+        async searchByOem() {
+          return {
+            ok: false as const,
+            error,
+            retryable: true,
+            retryAfterSeconds: error === "http-429" ? 12 : undefined,
+          };
+        },
+      };
+      const result = await runOemJob(
+        { oem: "1K0615301", source: "allegro", attempt: 3 },
+        { sources: [allegro], cache, ttlMs: 3_600_000, now },
+      );
+      expect(result).toMatchObject({ error, attempt: 3 });
+      expect(await cache.read("1K0615301", "allegro", now())).toBeNull();
+    }
+
+    const delays: number[] = [];
+    await consumeOemQueueBatch(
+      [
+        {
+          body: { oem: "1K0615301", source: "allegro", attempt: 3 },
+          ack() {},
+          retry(options) {
+            delays.push(options?.delaySeconds ?? 0);
+          },
+        },
+      ],
+      {
+        sources: [
+          {
+            id: "allegro",
+            async health() {
+              return { ok: true, detail: "zapnuto" };
+            },
+            async searchByOem() {
+              return { ok: false as const, error: "http-429", retryable: true, retryAfterSeconds: 12 };
+            },
+          },
+        ],
+        cache: new MemoryOemCache(),
+        ttlMs: 3_600_000,
+        now,
+      },
+    );
+    expect(delays).toEqual([retryDelaySeconds(3, 12)]);
+    expect(retryDelaySeconds(3, 12)).toBe(12);
+    expect(retryDelaySeconds(3)).toBe(8);
   });
 });
