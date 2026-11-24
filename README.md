@@ -85,6 +85,20 @@ Zápis do `search_sessions` proběhne, jen když je nastavené `SUPABASE_URL` a 
 
 Unit testy konektory mockují. Živý dotaz na zdroje do `npm test` nepatří.
 
+## Kostra zdrojů podle OEM
+
+`lib/sources` je vrstva nad oficiálním API. Není zapojená do `/api/search/stream` a nemá obrazovku. HTML nečte a captchu, přihlášení ani HTTP 403 neobchází.
+
+`PartSource` má `id`, `searchByOem(oem)` a `health()`. Odpověď je `SourceOffer`: zdroj, normalizované OEM, název, stav `used` (použitý) nebo `aftermarket` (druhovýroba), cena a měna, dostupnost, URL a `fetchedAt`. Cena v `SourceOffer.price` je nákupní. Veřejná nabídka ji nemá; prodejní cena dál vzniká jen v `toPublicOffer`.
+
+`normalizeOem` dá velká písmena a odebere mezery, tečky a pomlčky. Jiné znaky nechá. Do tabulky `oem_cache` jdou jen klíče z A–Z a číslic, nejvýš 80 znaků (migrace `005_oem_cache.sql`). Řádek drží `payload` jsonb a platí `fetched_at + ttl`. Čte a zapisuje ho jen `service_role`. Anon a zákazník nemají grant ani politiku.
+
+Fronta je `JobQueue`. Testy mají paměťovou implementaci. `createCloudflareJobQueue` pošle JSON do bindingu Cloudflare Queues; wrangler ani nasazení k tomu nejsou. Úloha je idempotentní podle `(oem, source)`: druhý enqueue se neodešle a worker při čerstvé cache zdroj znovu nevolá. Vypnutý zdroj se jako prázdný ceník neukládá.
+
+`SOURCE_<ID>` je vypínač (`SOURCE_ALLEGRO`). `0`, `false` nebo `no` zdroj vypne, chybějící proměnná ho nechá zapnutý. Bez `ALLEGRO_CLIENT_ID` a `ALLEGRO_CLIENT_SECRET` se Allegro vypne a nespadne. `SOURCE_BLOCK_THRESHOLD` je počet odpovědí 403 nebo captcha, po kterém se zdroj vypne a důvod se zapíše do logu. Výchozí je 3, tedy třetí taková odpověď. `OEM_CACHE_TTL_MS` je platnost cache v milisekundách, výchozí 6 hodin.
+
+Allegro volá `POST https://allegro.pl/auth/oauth/token` (client credentials) a `GET https://api.allegro.pl/offers/listing`. Stav bere jen z filtru `Stan`, který API vrátí: `używane` je `used`, `zamiennik` / `aftermarket` / `druhovýroba` je `aftermarket`. Hodnota `nowe` se nemapuje, protože výpis nerozliší originál a druhovýrobu. Cena je `sellingMode.price`, ne cena dopravy. Aukce se nebere.
+
 Ověření 11.&nbsp;11.&nbsp;2026: Autodoc, Ovoko/RRR i veřejná stránka B-Parts na identifikovaný požadavek vrací Cloudflare nebo CloudFront blokaci, takže konektor nabídku nevymýšlí. Inter Cars a Auto Partner nemají veřejné API bez smlouvy a zakázané nebo přihlašovací adresy se nevolají. Vlastní sklad vrátí jen řádek, který má vyplněné `part_condition`. Denní kurz ČNB z `api.cnb.cz` je veřejný a načítá se.
 
 ## Úvod a administrace
