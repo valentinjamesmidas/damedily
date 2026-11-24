@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cacheRowFresh, intervalToMs, MemoryOemCache, type OemCacheRow } from "./cache";
+import { defineOemCacheContract } from "./contracts";
 import type { SourceOffer } from "./types";
 
 const now = new Date("2026-11-24T12:00:00.000Z");
@@ -73,3 +74,5 @@ describe("MemoryOemCache", () => {
     expect(await cache.tryLease("LEASECLOCK", "allegro", heldUntil, during)).toBe(false);
   });
 });
+
+defineOemCacheContract("paměť", () => new MemoryOemCache());

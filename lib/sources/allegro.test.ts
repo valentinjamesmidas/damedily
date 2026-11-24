@@ -339,4 +339,70 @@ describe("AllegroSource", () => {
       .map((url) => url.searchParams.get("phrase"));
     expect(phrases).toEqual(["1K0 615 301", "1K0615301"]);
   });
+
+  it("strop těla platí s content-length i u streamu", async () => {
+    const env = { ALLEGRO_CLIENT_ID: "client", ALLEGRO_CLIENT_SECRET: "secret" };
+    const declared: typeof fetch = async () =>
+      new Response("{}", { status: 200, headers: { "content-type": "application/json", "content-length": "99999" } });
+    expect(
+      await createAllegroSource({ env, fetchImpl: declared, bodyLimitBytes: 10 }).searchByOem("1K0615301"),
+    ).toMatchObject({ ok: false, error: "odpověď je větší než limit" });
+
+    const streamed: typeof fetch = async () => {
+      const body = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("x".repeat(40)));
+          controller.close();
+        },
+      });
+      return new Response(body, { status: 200, headers: { "content-type": "application/json" } });
+    };
+    expect(
+      await createAllegroSource({ env, fetchImpl: streamed, bodyLimitBytes: 10 }).searchByOem("1K0615301"),
+    ).toMatchObject({ ok: false, error: "odpověď je větší než limit" });
+  });
+
+  it("token bere jedním letem i při dvou hledáních najednou", async () => {
+    let tokens = 0;
+    let release: (response: Response) => void = () => {};
+    const pending = new Promise<Response>((resolve) => {
+      release = resolve;
+    });
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url === ALLEGRO_TOKEN_URL) {
+        tokens += 1;
+        return pending;
+      }
+      return new Response(fixture("listing-filters.json"), {
+        status: 200,
+        headers: { "content-type": "application/vnd.allegro.public.v1+json" },
+      });
+    };
+    const source = createAllegroSource({
+      env: { ALLEGRO_CLIENT_ID: "client", ALLEGRO_CLIENT_SECRET: "secret" },
+      fetchImpl,
+      now: () => new Date(fetchedAt),
+    });
+    const first = source.searchByOem("1K0615301");
+    const second = source.searchByOem("1K0615301");
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(tokens).toBe(1);
+    release(new Response(fixture("token.json"), { status: 200, headers: { "content-type": "application/json" } }));
+    await Promise.all([first, second]);
+  });
+
+  it("špatné client credentials jsou trvalá chyba a zpráva neobsahuje tajemství", async () => {
+    const lines: string[] = [];
+    const fetchImpl: typeof fetch = async () =>
+      new Response('{"error":"invalid_client"}', { status: 401, headers: { "content-type": "application/json" } });
+    const result = await createAllegroSource({
+      env: { ALLEGRO_CLIENT_ID: "client", ALLEGRO_CLIENT_SECRET: "tajne-heslo" },
+      fetchImpl,
+      log: (message) => lines.push(message),
+    }).searchByOem("1K0615301");
+    expect(result).toEqual({ ok: false, error: "neplatné přihlašovací údaje", retryable: false });
+    expect(lines.join(" ")).toContain("client credentials");
+    expect(lines.join(" ")).not.toContain("tajne-heslo");
+  });
 });

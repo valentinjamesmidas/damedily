@@ -1,7 +1,8 @@
 import "server-only";
 
 import { detectPublicBlock } from "@/lib/search/block";
-import { BlockGate, readBlockThreshold, readBlockWindowMs, sourceFlagEnabled, type SourceLogger } from "@/lib/sources/block-gate";
+import { BlockGate, readBlockThreshold, readBlockWindowMs, sourceFlagEnabled, type SourceBlockGate, type SourceLogger } from "@/lib/sources/block-gate";
+import { createSupabaseBlockGate, supabaseServiceEnv } from "@/lib/sources/block-gate-supabase";
 import { normalizeOem, oemLookupPhrases } from "@/lib/sources/oem";
 import { sourceFailure, type PartSource, type SourceCondition, type SourceHealth, type SourceOffer, type SourceSearchResult } from "@/lib/sources/types";
 
@@ -24,7 +25,7 @@ export type AllegroSourceOptions = {
   fetchImpl?: typeof fetch;
   now?: () => Date;
   log?: SourceLogger;
-  gate?: BlockGate;
+  gate?: SourceBlockGate;
   timeoutMs?: number;
   bodyLimitBytes?: number;
 };
@@ -186,7 +187,7 @@ async function readBodyLimited(response: Response, maxBytes: number): Promise<st
   const reader = response.body?.getReader();
   if (!reader) {
     const text = await response.text();
-    return text.length > maxBytes ? null : text;
+    return new TextEncoder().encode(text).byteLength > maxBytes ? null : text;
   }
   const chunks: Uint8Array[] = [];
   let total = 0;
@@ -251,18 +252,20 @@ export function createAllegroSource(options: AllegroSourceOptions = {}): PartSou
   const fetchImpl = options.fetchImpl;
   const now = options.now ?? (() => new Date());
   const log = options.log ?? ((message) => console.warn(`[sources] ${message}`));
-  const gate =
+  const gate: SourceBlockGate =
     options.gate ??
-    new BlockGate(readBlockThreshold(env), log, readBlockWindowMs(env), now);
+    (supabaseServiceEnv(env)
+      ? createSupabaseBlockGate(env, fetch, { log })
+      : new BlockGate(readBlockThreshold(env), log, readBlockWindowMs(env), now));
   const timeoutMs = options.timeoutMs ?? ALLEGRO_TIMEOUT_MS;
   const bodyLimitBytes = options.bodyLimitBytes ?? ALLEGRO_BODY_LIMIT_BYTES;
   let token: { value: string; exp: number } | null = null;
   let tokenFlight: Promise<string | HttpMiss> | null = null;
 
-  function reason(): string | null {
+  async function reason(): Promise<string | null> {
     if (!sourceFlagEnabled(ALLEGRO_SOURCE_ID, env)) return "vypnuto přepínačem SOURCE_ALLEGRO";
     if (!allegroCredentials(env)) return "chybí ALLEGRO_CLIENT_ID nebo ALLEGRO_CLIENT_SECRET";
-    if (gate.isTripped(ALLEGRO_SOURCE_ID)) return "vypnuto po odpovědích 403 nebo captcha";
+    if (await gate.isTripped(ALLEGRO_SOURCE_ID)) return "vypnuto po odpovědích 403 nebo captcha";
     return null;
   }
 
@@ -274,12 +277,12 @@ export function createAllegroSource(options: AllegroSourceOptions = {}): PartSou
     return sourceFailure(miss.error, { retryable: miss.retryable, retryAfterSeconds: miss.retryAfterSeconds });
   }
 
-  function blocked(hit: HttpHit): HttpMiss | null {
+  async function blocked(hit: HttpHit): Promise<HttpMiss | null> {
     if (hit.redirected) {
       return { ok: false, error: "přesměrování, nepokračujeme", retryable: true, status: hit.status };
     }
     if (hit.status === 403) {
-      gate.record(ALLEGRO_SOURCE_ID, "http-403");
+      await gate.record(ALLEGRO_SOURCE_ID, "http-403");
       return { ok: false, error: "http-403", retryable: true, status: 403 };
     }
     if (hit.status === 429) {
@@ -296,7 +299,7 @@ export function createAllegroSource(options: AllegroSourceOptions = {}): PartSou
     }
     const detected = detectPublicBlock(hit.status, hit.body, hit.headers.get("cf-mitigated"));
     if (detected === "captcha" || detected === "cloudflare-challenge") {
-      gate.record(ALLEGRO_SOURCE_ID, "captcha");
+      await gate.record(ALLEGRO_SOURCE_ID, "captcha");
       return { ok: false, error: detected, retryable: true, status: hit.status };
     }
     if (hit.html) return { ok: false, error: "odpověď není JSON", retryable: true, status: hit.status };
@@ -361,7 +364,13 @@ export function createAllegroSource(options: AllegroSourceOptions = {}): PartSou
       body: "grant_type=client_credentials",
     });
     if (!result.ok) return result;
-    const problem = blocked(result);
+    if (result.status === 400 || result.status === 401) {
+      log(
+        `Allegro odmítlo client credentials (${result.status}). Opakování by přihlášení neopravilo.`,
+      );
+      return { ok: false, error: "neplatné přihlašovací údaje", retryable: false, status: result.status };
+    }
+    const problem = await blocked(result);
     if (problem) return problem;
     try {
       const parsed = JSON.parse(result.body) as { access_token?: unknown; expires_in?: unknown };
@@ -404,7 +413,7 @@ export function createAllegroSource(options: AllegroSourceOptions = {}): PartSou
       token = null;
       return loadListing(phrase, filter, true);
     }
-    const problem = blocked(result);
+    const problem = await blocked(result);
     if (problem) return problem;
     try {
       return JSON.parse(result.body) as unknown;
@@ -416,13 +425,13 @@ export function createAllegroSource(options: AllegroSourceOptions = {}): PartSou
   return {
     id: ALLEGRO_SOURCE_ID,
     async health(): Promise<SourceHealth> {
-      const detail = reason();
+      const detail = await reason();
       return detail ? { ok: false, detail } : { ok: true, detail: "klíče jsou nastavené" };
     },
     async searchByOem(oem: string): Promise<SourceSearchResult> {
       const phrases = oemLookupPhrases(oem);
       const compact = normalizeOem(oem);
-      if (!compact || reason()) return { ok: true, offers: [] };
+      if (!compact || (await reason())) return { ok: true, offers: [] };
       const fetchedAt = now().toISOString();
       const offers: SourceOffer[] = [];
       const seen = new Set<string>();
@@ -430,9 +439,9 @@ export function createAllegroSource(options: AllegroSourceOptions = {}): PartSou
         const first = await loadListing(phrase, null);
         if (isHttpMiss(first)) return asFailure(first);
         if (!first) return sourceFailure("výpis se nepodařilo načíst");
-        if (reason()) return sourceFailure("vypnuto po blokaci", { retryable: false });
+        if (await reason()) return sourceFailure("vypnuto po blokaci", { retryable: false });
         for (const query of allegroConditionQueries(first)) {
-          if (reason()) break;
+          if (await reason()) break;
           const page = await loadListing(phrase, query);
           if (isHttpMiss(page)) return asFailure(page);
           if (!page) continue;

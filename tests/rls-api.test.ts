@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createSupabaseBlockGate } from "@/lib/sources/block-gate-supabase";
+import { createSupabaseOemCache } from "@/lib/sources/cache-supabase";
+import { defineBlockGateContract, defineOemCacheContract } from "@/lib/sources/contracts";
+import type { PartSource } from "@/lib/sources/types";
+import { runOemJob } from "@/lib/sources/worker";
 
 const SENSITIVE_KEYS = [
   "internal_project_tag",
@@ -63,6 +68,16 @@ function requiredConfig(): { url: string; anonKey: string; serviceKey: string } 
 }
 
 const config = requiredConfig();
+
+const serviceEnv = {
+  SUPABASE_URL: config.url,
+  SUPABASE_SERVICE_ROLE_KEY: config.serviceKey,
+};
+
+defineOemCacheContract("postgres", () => createSupabaseOemCache(serviceEnv));
+defineBlockGateContract("postgres", () =>
+  createSupabaseBlockGate(serviceEnv, fetch, { threshold: 3, windowMs: 3_600_000, log: () => {} }),
+);
 
 function assertNoSensitive(payload: unknown, label: string): void {
   const text = JSON.stringify(payload);
@@ -708,5 +723,52 @@ describe("Data API neschovává citlivé sloupce jen na klientovi", () => {
     expect(hiddenCache.status).toBeGreaterThanOrEqual(400);
     expect(hiddenCache.text).not.toContain(marker);
     await rest("oem_cache?oem=eq.C6OEMCACHE1&source=eq.allegro", config.serviceKey, config.serviceKey, "DELETE");
+  });
+
+  it("dva současní workery zavolají zdroj jednou a třetí 403 přežije novou bránu", async () => {
+    const oem = "LEASEWORKER1";
+    const sourceId = "reviewgate";
+    await rest(`oem_cache?oem=eq.${oem}&source=eq.allegro`, config.serviceKey, config.serviceKey, "DELETE");
+    await rest(`source_health?source=eq.${sourceId}`, config.serviceKey, config.serviceKey, "DELETE");
+
+    const cache = createSupabaseOemCache(serviceEnv);
+    let calls = 0;
+    let started!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const slow: PartSource = {
+      id: "allegro",
+      async health() {
+        return { ok: true, detail: "zapnuto" };
+      },
+      async searchByOem() {
+        calls += 1;
+        started();
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        return { ok: true, offers: [] };
+      },
+    };
+    const deps = { sources: [slow], cache, ttlMs: 3_600_000, leaseMs: 60_000 };
+    const first = runOemJob({ oem, source: "allegro" }, deps);
+    await entered;
+    const second = await Promise.all([first, runOemJob({ oem, source: "allegro" }, deps)]);
+    expect(calls).toBe(1);
+    expect(second).toContain("fetched");
+    expect(second).toContain("leased");
+
+    const options = { threshold: 3, windowMs: 3_600_000, log: () => {} };
+    const gate = createSupabaseBlockGate(serviceEnv, fetch, options);
+    await gate.record(sourceId, "http-403");
+    await gate.record(sourceId, "http-403");
+    await gate.record(sourceId, "http-403");
+    const restarted = createSupabaseBlockGate(serviceEnv, fetch, options);
+    expect(await restarted.isTripped(sourceId)).toBe(true);
+    await restarted.reset(sourceId);
+
+    await rest(`oem_cache?oem=eq.${oem}&source=eq.allegro`, config.serviceKey, config.serviceKey, "DELETE");
+    await rest("oem_cache?oem=eq.CONTRACTOEM1&source=eq.allegro", config.serviceKey, config.serviceKey, "DELETE");
+    await rest(`source_health?source=eq.${sourceId}`, config.serviceKey, config.serviceKey, "DELETE");
+    await rest("source_health?source=eq.contractgate", config.serviceKey, config.serviceKey, "DELETE");
   });
 });

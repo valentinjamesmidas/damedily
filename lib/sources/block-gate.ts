@@ -63,11 +63,16 @@ export function nextBlockState(
   };
 }
 
+export interface SourceBlockGate {
+  record(sourceId: string, kind: BlockKind): Promise<void>;
+  isTripped(sourceId: string): Promise<boolean>;
+  reset(sourceId: string): Promise<void>;
+}
+
 /**
- * Počítá 403 a captchu po zdrojích. Po dosažení prahu zdroj vypne a jednou to zapíše.
- * Další požadavek se na zdroj neposílá a blokace se neobchází.
+ * Paměťová brána jen pro testy. Produkce volá `record_source_block` a čte `source_health`.
  */
-export class BlockGate {
+export class BlockGate implements SourceBlockGate {
   private readonly states = new Map<string, BlockState>();
 
   constructor(
@@ -77,7 +82,7 @@ export class BlockGate {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  record(sourceId: string, kind: BlockKind): void {
+  async record(sourceId: string, kind: BlockKind): Promise<void> {
     const nowMs = this.now().getTime();
     const next = nextBlockState(this.states.get(sourceId), nowMs, this.windowMs, this.threshold);
     const wasTripped = this.states.get(sourceId)?.trippedAtMs != null;
@@ -88,12 +93,11 @@ export class BlockGate {
     );
   }
 
-  /** Ruční reset. Okno i počet začínají znovu. */
-  reset(sourceId: string): void {
+  async reset(sourceId: string): Promise<void> {
     this.states.delete(sourceId);
   }
 
-  isTripped(sourceId: string): boolean {
+  async isTripped(sourceId: string): Promise<boolean> {
     return this.states.get(sourceId)?.trippedAtMs != null;
   }
 
