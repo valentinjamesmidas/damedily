@@ -1,5 +1,6 @@
 -- Ukázkový sklad pro lokální vývoj. Názvy začínají [UKÁZKA].
--- Veřejné sloupce schválně neobsahují interní tag, zdroj ani nákupní příběh.
+-- Veřejné sloupce schválně neobsahují původ skladu ani nákupní cenu.
+-- Všechny ukázkové kusy prodává DámeDíly s.r.o. a jsou vlastní sklad.
 -- Ostrý sklad sem nepatří. `supabase db reset` i `npm run seed:demo` jsou idempotentní.
 
 insert into public.inventory_items (
@@ -13,7 +14,7 @@ insert into public.inventory_items (
   selling_price_czk,
   stock_quantity,
   placement_type,
-  internal_project_tag,
+  source,
   images,
   part_condition,
   origin_kind,
@@ -30,7 +31,7 @@ insert into public.inventory_items (
     1200,
     3,
     'action_offer',
-    'ekokladno',
+    'vlastni_sklad',
     '{}',
     'pouzity',
     'oem',
@@ -47,7 +48,7 @@ insert into public.inventory_items (
     2100,
     2,
     'action_offer',
-    'damedily',
+    'vlastni_sklad',
     '{}',
     'novy',
     'druhovyroba',
@@ -64,7 +65,7 @@ insert into public.inventory_items (
     270,
     6,
     'permanent_offer',
-    'damedily',
+    'vlastni_sklad',
     '{}',
     'novy',
     'oem',
@@ -81,7 +82,7 @@ insert into public.inventory_items (
     380,
     5,
     'permanent_offer',
-    'ekokladno',
+    'vlastni_sklad',
     '{}',
     'novy',
     'druhovyroba',
@@ -98,7 +99,7 @@ insert into public.inventory_items (
     3300,
     1,
     'permanent_offer',
-    'ekokladno',
+    'vlastni_sklad',
     '{}',
     'pouzity',
     'oem',
@@ -115,7 +116,7 @@ insert into public.inventory_items (
     2700,
     4,
     'van_tires',
-    'damedily',
+    'vlastni_sklad',
     '{}',
     'novy',
     'druhovyroba',
@@ -132,7 +133,7 @@ insert into public.inventory_items (
     2400,
     4,
     'van_tires',
-    'ekokladno',
+    'vlastni_sklad',
     '{}',
     'novy',
     'druhovyroba',
@@ -149,7 +150,7 @@ insert into public.inventory_items (
     3150,
     2,
     'van_tires',
-    'damedily',
+    'vlastni_sklad',
     '{}',
     'novy',
     'druhovyroba',
@@ -165,7 +166,7 @@ on conflict (id) do update set
   selling_price_czk = excluded.selling_price_czk,
   stock_quantity = excluded.stock_quantity,
   placement_type = excluded.placement_type,
-  internal_project_tag = excluded.internal_project_tag,
+  source = excluded.source,
   part_condition = excluded.part_condition,
   origin_kind = excluded.origin_kind,
   condition_detail = excluded.condition_detail;

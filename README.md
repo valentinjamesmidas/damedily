@@ -1,6 +1,6 @@
 # DámeDíly.cz
 
-E-shop DámeDíly.cz. Krok 1 je kostra Next.js, schéma Supabase a testy, které hlídají minimální objednávku 2&nbsp;000&nbsp;Kč a to, že se nákupní cena, interní tag, zdroj a reference dodavatele nevracejí anonymovi ani zákazníkovi. Krok 2 přidává serverového klienta xAI, prompty Dílobota, maskování dodavatelů a interní endpoint `/api/dilobot`. Krok 3 přidává progresivní hledání `/api/search/stream`. Krok 4 je hlavní stránka a administrace skladu.
+E-shop DámeDíly.cz. Prodává jen DámeDíly s.r.o. Krok 1 je kostra Next.js a schéma Supabase. Od v1.1 je minimum 2&nbsp;000&nbsp;Kč součet zboží včetně DPH, bez dopravy a služeb, a nákupní cena, původ skladu, zdroj nákupu ani reference dodavatele se nevracejí anonymovi ani zákazníkovi. Krok 2 přidává serverového klienta xAI, prompty Dílobota, maskování dodavatelů a interní endpoint `/api/dilobot`. Krok 3 přidává progresivní hledání `/api/search/stream`. Krok 4 je hlavní stránka a administrace skladu.
 
 Zadání produktu je v [docs/MASTERPROMPT.md](docs/MASTERPROMPT.md). Dodatek Právní mantinely má přednost, včetně změny bodu 4 o scrapingu. Rozsah kostry je v [docs/zadani/krok-1.md](docs/zadani/krok-1.md).
 
@@ -57,7 +57,7 @@ npm run test:rls-api
 - `supabase test db` pouští pgTAP v `supabase/tests` proti lokálnímu Postgresu.
 - `npm run test:rls-api` volá Auth a PostgREST. Bez běžícího Supabase spadne, neskipuje se.
 
-V GitHub Actions běží typecheck, lint a unit i komponentové testy v jednom jobu. Samostatný job stáhne Chromium příkazem `npx playwright install chromium` a spustí Playwright. Systémové fonty přes apt se nestahují: při výpadku zrcadel Ubuntu by job spadl dřív, než testy začnou, a knihovny prohlížeče na runneru už jsou. Další job spustí lokální Supabase, pgTAP i API testy. Živý test xAI se bez secretu po kontrole klíče dál nespouští.
+V GitHub Actions běží typecheck, lint, unit i komponentové testy a `npm run build` v jednom jobu. Samostatný job stáhne Chromium příkazem `npx playwright install chromium` a spustí Playwright. Systémové fonty přes apt se nestahují: při výpadku zrcadel Ubuntu by job spadl dřív, než testy začnou, a knihovny prohlížeče na runneru už jsou. Další job spustí lokální Supabase, pgTAP i API testy. Živý test xAI se bez secretu po kontrole klíče dál nespouští.
 
 ## xAI
 
@@ -69,13 +69,13 @@ Klient je v `lib/xai-grok.ts` a smí běžet jen na serveru. Volá `POST /v1/cha
 
 `POST /api/vision` čte JPEG nebo PNG a vrátí jen OEM a typ dílu, bez jistoty modelu. `POST /api/admin/vision` je totéž pro skladovou kartu (název, OEM, kategorie) a bez role admin se model nevolá. Při chybě nebo HTTP 402 stránka neslibuje výsledek a nechá ruční zadání.
 
-Veřejná nabídka z `lib/white-label.ts` má prodejní cenu z `sellingPrice`, stav, údaj použitý/nový a dodací lhůtu. U externího zdroje je to `4–5 pracovních dní` a označení skladu netvrdí, že díl už je v ČR. Vlastní sklad uvádí, že je na provozovně. V typu ani v JSON nejsou `cost_price`, `source_platform`, `internal_project_tag` ani AI skóre.
+Veřejná nabídka z `lib/white-label.ts` má u cizího zdroje prodejní cenu z `sellingPrice`, stav, údaj použitý/nový a dodací lhůtu. U externího zdroje je to `4–5 pracovních dní` a označení skladu netvrdí, že díl už je v ČR. Vlastní sklad uvádí, že je na provozovně, a do streamu dává uloženou `selling_price_czk`. Nákupní cena se u něj znovu nenásobí marží a do veřejné nabídky se nedostane. V typu ani v JSON nejsou `cost_price`, `source_platform`, `internal_project_tag` ani AI skóre.
 
 ## Hledání
 
 `POST /api/search/stream` bere JSON `{ "oemNumber", "vehicle", "category", "rawQuery", "queryType" }`. Aspoň jedno z prvních čtyř polí musí být vyplněné. Odpověď je `text/event-stream`: nejdřív `first_found` a nejlevnější plně vyhovující veřejná nabídka (rozpočet `SEARCH_FIRST_BUDGET_MS`, výchozí 1,5&nbsp;s, i z cache nebo vlastního skladu), potom `searching_alternatives` a až dvě další nabídky, nakonec `completed`.
 
-Veřejná nabídka je pořád jen `PublicOffer`. Cizí cena se přepočte denním kurzem ČNB (`https://api.cnb.cz/cnbapi/exrates/daily`) a při jeho výpadku kurzem ECB. Prodejní cena jde přes `sellingPrice`. Fotka z cizí adresy je ve výstupu jen jako `/api/media/…`; proxy ji pošle dál beze změny a při blokaci zdroje nic neopakuje.
+Veřejná nabídka je pořád jen `PublicOffer`. Cizí cena se přepočte denním kurzem ČNB (`https://api.cnb.cz/cnbapi/exrates/daily`) a při jeho výpadku kurzem ECB. Prodejní cena cizí nabídky jde přes `sellingPrice` (pásma marže podle nákupní ceny, nahoru na desetikoruny, na hraně pásma neklesne). Vlastní sklad bere cenu, která je uložená u položky. Fotka z cizí adresy je ve výstupu jen jako `/api/media/…`. Proxy ji stáhne s `redirect: manual`, u každého skoku (nejvýš tři) pustí jen `http`/`https` na portu 80 nebo 443 a před požadavkem ověří všechny A i AAAA adresy. Soukromé a vyhrazené rozsahy, jiný typ než JPEG, PNG, WebP, AVIF nebo GIF a tělo nad 5&nbsp;MiB odmítne. Připojení jde na už ověřenou IP. Na Cloudflare Workers se socket takhle připnout nedá, proto tam proxy fotku nestáhne. Bajty úspěšné fotky se nemění a při blokaci zdroje se požadavek neopakuje.
 
 Každý zdroj má vypínač `SUPPLIER_*`. Vypnutý zdroj se nevolá. Zapnutý zdroj, který narazí na captchu, přihlášení nebo HTTP 401/403/429, vrátí prázdný seznam a důvod zůstane v serverovém logu. Dotaz zakázaný `robots.txt` se neposílá. Mezi požadavky na stejnou doménu je mezera `SEARCH_MIN_INTERVAL_MS` (výchozí 8&nbsp;s) a odpověď se na `SEARCH_CACHE_TTL_MS` (výchozí 6&nbsp;h) drží v paměti procesu.
 
@@ -93,7 +93,7 @@ Ověření 11.&nbsp;11.&nbsp;2026: Autodoc, Ovoko/RRR i veřejná stránka B-Par
 
 Akční nabídka, stálá nabídka a pneu pro dodávky čtou `public_inventory`. Prázdný sklad má vlastní hlášku. Pneu filtruje šířku, profil, průměr R15C/R16C/R17C a období. Vlastní sklad na kartě říká, že je na provozovně. U externí nabídky zůstává lhůta 4–5 pracovních dní.
 
-`/admin` hlídá middleware i server. Nepřihlášený skončí na `/admin/prihlaseni` (heslo nebo odkaz, bez zakládání účtu). Zákazník vidí `/admin/pristup` a sklad se nenačte. Administrátor mění položky včetně povinného tagu EKOKLADNO / DAMEDILY. Prodejní cena se předvyplní z `sellingPrice` a jde přepsat. Umístění je jedno ze tří, protože sloupec `placement_type` je jeden. Fotky se nahrávají do Storage pod session administrátora, takže zápis drží RLS.
+`/admin` hlídá middleware i server. Nepřihlášený skončí na `/admin/prihlaseni` (heslo nebo odkaz, bez zakládání účtu). Zákazník vidí `/admin/pristup` a sklad se nenačte. Administrátor mění položky bez projektového tagu. Prodejní cena se předvyplní z `sellingPrice` a jde přepsat. Umístění je jedno ze tří, protože sloupec `placement_type` je jeden. Fotky se nahrávají do Storage pod session administrátora, takže zápis drží RLS.
 
 ## Přístup k datům
 
@@ -101,6 +101,8 @@ Akční nabídka, stálá nabídka a pneu pro dodávky čtou `public_inventory`.
 | --- | --- | --- |
 | Anonym | jen view `public_inventory` | nic |
 | Zákazník | jen view `public_inventory` | jen view `customer_order_items` svých objednávek |
-| Admin | tabulka `inventory_items` včetně nákupní ceny a tagu | tabulka `order_items` včetně zdroje, reference, nákupní ceny a tagu |
+| Admin | tabulka `inventory_items` včetně nákupní ceny a původu `source` | tabulka `order_items` včetně zdroje, reference a nákupní ceny |
+
+Objednávku vloží jen admin. Zákazník ve svém profilu nezmění e-mail a u objednávky nenastaví `payment_status`. Minimum 2&nbsp;000&nbsp;Kč se počítá ze součtu zboží včetně DPH (`line_kind = zbozi`). Doprava a služba se nepočítají. Veřejná view dál běží s `security_invoker = false`: anon na podkladovou tabulku SELECT nemá a zákazník z ní přes RLS nedostane řádek, takže view musí číst jako vlastník a vypsat jen bezpečné sloupce.
 
 Anon na základní tabulky nemá `GRANT`. Zákazník a admin sdílejí roli `authenticated`, takže zákazníka od tabulky odděluje RLS: přímý `SELECT` nevrátí žádný řádek. První admin se nastaví ručně v SQL (`update profiles set role = 'admin'`), v repozitáři žádné heslo není.

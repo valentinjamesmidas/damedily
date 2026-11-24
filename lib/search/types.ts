@@ -1,4 +1,4 @@
-import type { ProjectTag, SourcePlatform } from "@/lib/white-label";
+import type { SourcePlatform } from "@/lib/white-label";
 
 export type SearchQueryType = "chat" | "catalog" | "photo";
 
@@ -21,11 +21,15 @@ export type SupplierListing = {
   conditionDetail: string | null;
   originKind: "oem" | "druhovyroba" | null;
   price: number;
+  /**
+   * true jen u vlastního skladu: `price` je uložená prodejní cena v Kč.
+   * Marže se z ní znovu nepočítá a nákupní cena v nabídce není.
+   */
+  priceIsSelling?: boolean;
   currency: string;
   imageUrls: string[];
   supplierLeadTime: string | null;
   category: string | null;
-  internalProjectTag?: ProjectTag;
 };
 
 export type ConnectorOutcome = "ok" | "empty" | "blocked" | "skipped" | "error";

@@ -10,7 +10,7 @@ import {
   validateInventoryInput,
   type InventoryInput,
   type Placement,
-  type ProjectTagValue,
+  type StockSource,
 } from "@/lib/inventory/item-input";
 import type { ActionResult } from "@/lib/inventory/action-result";
 import { sellingPrice } from "@/lib/pricing";
@@ -29,7 +29,7 @@ type FormState = {
   sellingTouched: boolean;
   stockQuantity: string;
   placementType: "" | Placement;
-  internalProjectTag: "" | ProjectTagValue;
+  source: "" | StockSource;
   vehicleText: string;
   images: string[];
   tireWidth: string;
@@ -52,7 +52,7 @@ function emptyState(): FormState {
     sellingTouched: false,
     stockQuantity: "1",
     placementType: "",
-    internalProjectTag: "",
+    source: "vlastni_sklad",
     vehicleText: "",
     images: [],
     tireWidth: "",
@@ -76,7 +76,7 @@ function fromItem(item: AdminItem): FormState {
     sellingTouched: true,
     stockQuantity: String(item.stockQuantity),
     placementType: item.placementType,
-    internalProjectTag: item.internalProjectTag,
+    source: item.source,
     vehicleText: item.vehicleText,
     images: item.images,
     tireWidth: item.tireSpecs ? String(item.tireSpecs.width) : "",
@@ -185,7 +185,7 @@ export function InventoryForm({
       sellingPriceCzk: state.sellingPriceCzk === "" ? null : state.sellingPriceCzk,
       stockQuantity: state.stockQuantity,
       placementType: state.placementType,
-      internalProjectTag: state.internalProjectTag,
+      source: state.source,
       images: state.images,
       vehicleText: state.vehicleText,
       tireSpecs:
@@ -309,6 +309,15 @@ export function InventoryForm({
         Přepočítat z nákupní ceny
       </Button>
 
+      <label className="block text-sm font-semibold">
+        Původ skladu
+        <select className={fieldClass} value={state.source} onChange={(event) => patch({ source: event.target.value as FormState["source"] })}>
+          <option value="vlastni_sklad">Vlastní sklad</option>
+          <option value="cizi_zdroj">Cizí zdroj</option>
+          <option value="dropship">Dropship</option>
+        </select>
+      </label>
+
       <fieldset>
         <legend className="text-sm font-semibold">Umístění</legend>
         <div className="mt-2 flex flex-col gap-2 text-sm">
@@ -365,30 +374,6 @@ export function InventoryForm({
           </label>
         </div>
       ) : null}
-
-      <fieldset>
-        <legend className="text-sm font-semibold">Projekt</legend>
-        <div className="mt-2 flex flex-wrap gap-4 text-sm">
-          <label className="inline-flex items-center gap-2">
-            <input
-              type="radio"
-              name="projekt"
-              checked={state.internalProjectTag === "ekokladno"}
-              onChange={() => patch({ internalProjectTag: "ekokladno" })}
-            />
-            EKOKLADNO
-          </label>
-          <label className="inline-flex items-center gap-2">
-            <input
-              type="radio"
-              name="projekt"
-              checked={state.internalProjectTag === "damedily"}
-              onChange={() => patch({ internalProjectTag: "damedily" })}
-            />
-            DAMEDILY
-          </label>
-        </div>
-      </fieldset>
 
       <label className="block text-sm font-semibold">
         Vozidla

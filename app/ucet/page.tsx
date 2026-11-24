@@ -13,7 +13,8 @@ export default function AccountPage() {
       <h1 className="mt-3 font-display text-4xl font-semibold tracking-tight">Můj účet</h1>
       <p className="mt-4 text-lg leading-7 text-muted">
         Přihlášení, objednávky, vozidla a faktury přijdou v dalším kroku. Tahle stránka je jen
-        místo, kam se zóna připojí.
+        místo, kam se zóna připojí. Přihlašovací e-mail po založení účtu nejde změnit a není tu
+        na to pole.
       </p>
       <ul className="mt-8 divide-y divide-line rounded-3xl border border-line bg-card">
         {["Objednávky a stav kontroly", "Moje garáž", "Faktury"].map((item) => (

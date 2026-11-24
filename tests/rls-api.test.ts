@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const SENSITIVE_KEYS = [
   "internal_project_tag",
+  "source",
   "source_platform",
   "cost_price_czk",
   "supplier_order_ref",
@@ -103,6 +104,20 @@ async function request(
     }
   }
   return { status: response.status, body, text };
+}
+
+async function insertOrder(
+  token: string,
+  key: string,
+  orderRow: Record<string, unknown>,
+  lines: Record<string, unknown>[],
+): Promise<ApiResult> {
+  return request("/rest/v1/rpc/insert_order_with_lines", {
+    method: "POST",
+    key,
+    token,
+    body: { order_row: orderRow, lines },
+  });
 }
 
 function errorCode(result: ApiResult): string | undefined {
@@ -262,57 +277,62 @@ describe("Data API neschovává citlivé sloupce jen na klientovi", () => {
       selling_price_czk: 150,
       stock_quantity: 2,
       placement_type: "action_offer",
-      internal_project_tag: "damedily",
+      source: "vlastni_sklad",
     });
     expect([200, 201], item.text).toContain(item.status);
 
-    const order = await rest("orders", config.serviceKey, config.serviceKey, "POST", {
-      id: ORDER_ID,
-      order_number: `DD-API-${ORDER_ID.slice(0, 8)}`,
-      user_id: CUSTOMER_ID,
-      total_amount_czk: 2500,
-    });
+    const order = await insertOrder(
+      config.serviceKey,
+      config.serviceKey,
+      {
+        id: ORDER_ID,
+        order_number: `DD-API-${ORDER_ID.slice(0, 8)}`,
+        user_id: CUSTOMER_ID,
+        total_amount_czk: 2500,
+      },
+      [
+        {
+          id: ORDER_ITEM_ID,
+          item_title_cs: "Brzdový kotouč API",
+          oem_number: "OEM-API",
+          source_platform: "ovoko",
+          supplier_order_ref: `${SECRET_MARKER}-1`,
+          cost_price_czk: 80,
+          selling_price_czk: 2500,
+          quantity: 1,
+          line_kind: "zbozi",
+        },
+      ],
+    );
     expect([200, 201], order.text).toContain(order.status);
 
-    const otherOrder = await rest("orders", config.serviceKey, config.serviceKey, "POST", {
-      id: OTHER_ORDER_ID,
-      order_number: `DD-API-${OTHER_ORDER_ID.slice(0, 8)}`,
-      user_id: OTHER_ID,
-      total_amount_czk: 2500,
-    });
+    const otherOrder = await insertOrder(
+      config.serviceKey,
+      config.serviceKey,
+      {
+        id: OTHER_ORDER_ID,
+        order_number: `DD-API-${OTHER_ORDER_ID.slice(0, 8)}`,
+        user_id: OTHER_ID,
+        total_amount_czk: 2100,
+      },
+      [
+        {
+          id: OTHER_ORDER_ITEM_ID,
+          item_title_cs: "Jiná položka API",
+          oem_number: "OEM-OTHER",
+          source_platform: "autodoc",
+          supplier_order_ref: `${SECRET_MARKER}-2`,
+          cost_price_czk: 90,
+          selling_price_czk: 2100,
+          quantity: 1,
+          line_kind: "zbozi",
+        },
+      ],
+    );
     expect([200, 201], otherOrder.text).toContain(otherOrder.status);
-
-    const orderItem = await rest("order_items", config.serviceKey, config.serviceKey, "POST", {
-      id: ORDER_ITEM_ID,
-      order_id: ORDER_ID,
-      item_title_cs: "Brzdový kotouč API",
-      oem_number: "OEM-API",
-      source_platform: "ovoko",
-      supplier_order_ref: `${SECRET_MARKER}-1`,
-      internal_project_tag: "ekokladno",
-      cost_price_czk: 80,
-      selling_price_czk: 150,
-      quantity: 1,
-    });
-    expect([200, 201], orderItem.text).toContain(orderItem.status);
-
-    const otherItem = await rest("order_items", config.serviceKey, config.serviceKey, "POST", {
-      id: OTHER_ORDER_ITEM_ID,
-      order_id: OTHER_ORDER_ID,
-      item_title_cs: "Jiná položka API",
-      oem_number: "OEM-OTHER",
-      source_platform: "autodoc",
-      supplier_order_ref: `${SECRET_MARKER}-2`,
-      internal_project_tag: "damedily",
-      cost_price_czk: 90,
-      selling_price_czk: 140,
-      quantity: 1,
-    });
-    expect([200, 201], otherItem.text).toContain(otherItem.status);
   });
 
   afterAll(async () => {
-    await rest(`order_items?id=in.(${ORDER_ITEM_ID},${OTHER_ORDER_ITEM_ID})`, config.serviceKey, config.serviceKey, "DELETE");
     await rest(`orders?id=in.(${ORDER_ID},${OTHER_ORDER_ID})`, config.serviceKey, config.serviceKey, "DELETE");
     await rest(`inventory_items?id=eq.${ITEM_ID}`, config.serviceKey, config.serviceKey, "DELETE");
     await request(`/auth/v1/admin/users/${CUSTOMER_ID}`, { method: "DELETE", key: config.serviceKey });
@@ -354,7 +374,7 @@ describe("Data API neschovává citlivé sloupce jen na klientovi", () => {
   });
 
   it("zákazník nevidí skladovou tabulku ani cizí objednávku a view je ořezané", async () => {
-    const table = await rest("inventory_items?select=cost_price_czk,internal_project_tag", customerToken, config.anonKey);
+    const table = await rest("inventory_items?select=cost_price_czk,source", customerToken, config.anonKey);
     expect(table.status).toBe(200);
     expect(table.body).toEqual([]);
 
@@ -381,7 +401,7 @@ describe("Data API neschovává citlivé sloupce jen na klientovi", () => {
         order_id: ORDER_ID,
         item_title_cs: "Brzdový kotouč API",
         oem_number: "OEM-API",
-        selling_price_czk: 150,
+        selling_price_czk: 2500,
         quantity: 1,
       },
     ]);
@@ -398,30 +418,15 @@ describe("Data API neschovává citlivé sloupce jen na klientovi", () => {
     ]);
   });
 
-  it("CHECK 2 000 Kč platí i přes Data API a zákazník si nezmění roli", async () => {
-    const tooSmall = await rest("orders", customerToken, config.anonKey, "POST", {
-      order_number: `DD-LOW-${CUSTOMER_ID.slice(0, 8)}`,
+  it("zákazník nezaloží objednávku, nenastaví platbu ani e-mail a minimum je na zboží", async () => {
+    const ownOrder = await rest("orders", customerToken, config.anonKey, "POST", {
+      order_number: `DD-CUST-${CUSTOMER_ID.slice(0, 8)}`,
       user_id: CUSTOMER_ID,
-      total_amount_czk: 1999,
+      total_amount_czk: 2500,
+      payment_status: "captured",
     });
-    expect(tooSmall.status).toBeGreaterThanOrEqual(400);
-    expect(errorCode(tooSmall)).toBe("23514");
-
-    const exact = await rest("orders", customerToken, config.anonKey, "POST", {
-      order_number: `DD-OK-${CUSTOMER_ID.slice(0, 8)}`,
-      user_id: CUSTOMER_ID,
-      total_amount_czk: 2000,
-    });
-    expect([200, 201], exact.text).toContain(exact.status);
-    const created = Array.isArray(exact.body) ? exact.body[0] : null;
-    const createdId =
-      created && typeof created === "object" && !Array.isArray(created) && typeof created.id === "string"
-        ? created.id
-        : null;
-    expect(createdId).toEqual(expect.any(String));
-    if (createdId) {
-      await rest(`orders?id=eq.${createdId}`, config.serviceKey, config.serviceKey, "DELETE");
-    }
+    expect(ownOrder.status).toBeGreaterThanOrEqual(400);
+    expect(errorCode(ownOrder)).toBe("42501");
 
     const foreign = await rest("orders", customerToken, config.anonKey, "POST", {
       order_number: `DD-CIZI-${CUSTOMER_ID.slice(0, 8)}`,
@@ -429,6 +434,200 @@ describe("Data API neschovává citlivé sloupce jen na klientovi", () => {
       total_amount_czk: 2500,
     });
     expect(foreign.status).toBeGreaterThanOrEqual(400);
+    expect(errorCode(foreign)).toBe("42501");
+
+    const payment = await rest(`orders?id=eq.${ORDER_ID}`, customerToken, config.anonKey, "PATCH", {
+      payment_status: "captured",
+    });
+    expect(payment.status).toBe(200);
+    expect(payment.body).toEqual([]);
+
+    const email = await rest(`profiles?id=eq.${CUSTOMER_ID}`, customerToken, config.anonKey, "PATCH", {
+      email: `jiny-${CUSTOMER_ID.slice(0, 8)}@damedily.test`,
+    });
+    expect(email.status).toBeGreaterThanOrEqual(400);
+    expect(errorCode(email)).toBe("42501");
+
+    const profileEmail = await rest(`profiles?id=eq.${CUSTOMER_ID}&select=email`, customerToken, config.anonKey);
+    expect(profileEmail.body).toEqual([{ email: customerEmail }]);
+
+    const authEmail = await request(`/auth/v1/admin/users/${CUSTOMER_ID}`, {
+      method: "PUT",
+      key: config.serviceKey,
+      body: { email: `zmena-${CUSTOMER_ID.slice(0, 8)}@damedily.test` },
+    });
+    const authUser = await request(`/auth/v1/admin/users/${CUSTOMER_ID}`, {
+      method: "GET",
+      key: config.serviceKey,
+    });
+    const storedEmail =
+      authUser.body && typeof authUser.body === "object" && !Array.isArray(authUser.body)
+        ? authUser.body.email
+        : null;
+    expect(storedEmail, authEmail.text).toBe(customerEmail);
+
+    const lowId = randomUUID();
+    const tooSmall = await insertOrder(
+      config.serviceKey,
+      config.serviceKey,
+      {
+        id: lowId,
+        order_number: `DD-LOW-${lowId.slice(0, 8)}`,
+        user_id: CUSTOMER_ID,
+        total_amount_czk: 1999,
+      },
+      [
+        {
+          item_title_cs: "Málo",
+          oem_number: "OEM-LOW",
+          source_platform: "internal_stock",
+          cost_price_czk: 100,
+          selling_price_czk: 1999,
+          quantity: 1,
+          line_kind: "zbozi",
+        },
+      ],
+    );
+    expect(tooSmall.status).toBeGreaterThanOrEqual(400);
+    expect(errorCode(tooSmall)).toBe("23514");
+
+    const shipId = randomUUID();
+    const shipping = await insertOrder(
+      config.serviceKey,
+      config.serviceKey,
+      {
+        id: shipId,
+        order_number: `DD-SHIP-${shipId.slice(0, 8)}`,
+        user_id: CUSTOMER_ID,
+        total_amount_czk: 2100,
+      },
+      [
+        {
+          item_title_cs: "Zboží",
+          oem_number: "OEM-SHIP",
+          source_platform: "internal_stock",
+          cost_price_czk: 800,
+          selling_price_czk: 1500,
+          quantity: 1,
+          line_kind: "zbozi",
+        },
+        {
+          item_title_cs: "Doprava",
+          oem_number: "DOPRAVA",
+          source_platform: "internal_stock",
+          cost_price_czk: 0,
+          selling_price_czk: 600,
+          quantity: 1,
+          line_kind: "doprava",
+        },
+      ],
+    );
+    expect(shipping.status).toBeGreaterThanOrEqual(400);
+    expect(errorCode(shipping)).toBe("23514");
+
+    const enough = await insertOrder(
+      adminToken,
+      config.anonKey,
+      {
+        order_number: `DD-OK-${lowId.slice(0, 8)}`,
+        user_id: CUSTOMER_ID,
+        total_amount_czk: 0,
+      },
+      [
+        {
+          item_title_cs: "Zboží",
+          oem_number: "OEM-OK",
+          source_platform: "internal_stock",
+          cost_price_czk: 1000,
+          selling_price_czk: 2000,
+          quantity: 1,
+          line_kind: "zbozi",
+        },
+        {
+          item_title_cs: "Služba",
+          oem_number: "SLUZBA",
+          source_platform: "internal_stock",
+          cost_price_czk: 0,
+          selling_price_czk: 300,
+          quantity: 1,
+          line_kind: "sluzba",
+        },
+      ],
+    );
+    expect([200, 201], enough.text).toContain(enough.status);
+    const createdId = typeof enough.body === "string" ? enough.body : null;
+    expect(createdId).toBeTruthy();
+    const stored = await rest(`orders?id=eq.${createdId}&select=total_amount_czk`, config.serviceKey, config.serviceKey);
+    expect(rowsOf(stored.body).map((row) => moneyRow(row, ["total_amount_czk"]))).toEqual([
+      { total_amount_czk: 2300 },
+    ]);
+    await rest(`orders?id=eq.${createdId}`, config.serviceKey, config.serviceKey, "DELETE");
+
+    const split = await insertOrder(
+      config.serviceKey,
+      config.serviceKey,
+      {
+        order_number: `DD-SPLIT-${lowId.slice(0, 8)}`,
+        user_id: CUSTOMER_ID,
+        total_amount_czk: 0,
+      },
+      [
+        {
+          item_title_cs: "První",
+          oem_number: "OEM-1500",
+          source_platform: "internal_stock",
+          cost_price_czk: 800,
+          selling_price_czk: 1500,
+          quantity: 1,
+          line_kind: "zbozi",
+        },
+        {
+          item_title_cs: "Druhý",
+          oem_number: "OEM-1000",
+          source_platform: "internal_stock",
+          cost_price_czk: 600,
+          selling_price_czk: 1000,
+          quantity: 1,
+          line_kind: "zbozi",
+        },
+      ],
+    );
+    expect([200, 201], split.text).toContain(split.status);
+    if (typeof split.body === "string") {
+      await rest(`orders?id=eq.${split.body}`, config.serviceKey, config.serviceKey, "DELETE");
+    }
+
+    const under = await insertOrder(
+      config.serviceKey,
+      config.serviceKey,
+      {
+        order_number: `DD-UNDER-${lowId.slice(0, 8)}`,
+        user_id: CUSTOMER_ID,
+        total_amount_czk: 0,
+      },
+      [
+        {
+          item_title_cs: "První",
+          oem_number: "OEM-1000B",
+          source_platform: "internal_stock",
+          cost_price_czk: 500,
+          selling_price_czk: 1000,
+          quantity: 1,
+          line_kind: "zbozi",
+        },
+        {
+          item_title_cs: "Druhý",
+          oem_number: "OEM-999",
+          source_platform: "internal_stock",
+          cost_price_czk: 500,
+          selling_price_czk: 999,
+          quantity: 1,
+          line_kind: "zbozi",
+        },
+      ],
+    );
+    expect(under.status).toBeGreaterThanOrEqual(400);
+    expect(errorCode(under)).toBe("23514");
 
     const escalate = await rest(`profiles?id=eq.${CUSTOMER_ID}`, customerToken, config.anonKey, "PATCH", {
       role: "admin",
@@ -448,17 +647,17 @@ describe("Data API neschovává citlivé sloupce jen na klientovi", () => {
     assertNoSensitive(hidden.body, "cizí zákazník");
 
     const inventory = await rest(
-      `inventory_items?id=eq.${ITEM_ID}&select=cost_price_czk,internal_project_tag`,
+      `inventory_items?id=eq.${ITEM_ID}&select=cost_price_czk,source`,
       adminToken,
       config.anonKey,
     );
     expect(inventory.status).toBe(200);
     expect(rowsOf(inventory.body).map((row) => moneyRow(row, ["cost_price_czk"]))).toEqual([
-      { cost_price_czk: 100, internal_project_tag: "damedily" },
+      { cost_price_czk: 100, source: "vlastni_sklad" },
     ]);
 
     const secret = await rest(
-      `order_items?id=eq.${ORDER_ITEM_ID}&select=source_platform,supplier_order_ref,cost_price_czk,internal_project_tag`,
+      `order_items?id=eq.${ORDER_ITEM_ID}&select=source_platform,supplier_order_ref,cost_price_czk,line_kind`,
       adminToken,
       config.anonKey,
     );
@@ -468,7 +667,7 @@ describe("Data API neschovává citlivé sloupce jen na klientovi", () => {
         source_platform: "ovoko",
         supplier_order_ref: `${SECRET_MARKER}-1`,
         cost_price_czk: 80,
-        internal_project_tag: "ekokladno",
+        line_kind: "zbozi",
       },
     ]);
   });

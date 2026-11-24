@@ -8,7 +8,7 @@ import type { PreparedOffer } from "@/lib/search/rank";
 import type { SupplierListing } from "@/lib/search/types";
 import { normalizeListing } from "@/lib/dilobot";
 import type { XaiClient } from "@/lib/xai-grok";
-import { toPublicOffer, type ProjectTag } from "@/lib/white-label";
+import { toPublicOffer } from "@/lib/white-label";
 
 export function listingSourceText(listing: SupplierListing): string {
   return [
@@ -56,7 +56,6 @@ export async function prepareListings(input: {
   rates: RateTable | null;
   translate: (listing: SupplierListing) => Promise<ListingNormalization | null>;
   images: ImageLinkStore;
-  projectTag: ProjectTag;
 }): Promise<PreparedOffer[]> {
   const prepared: PreparedOffer[] = [];
   const seen = new Set<string>();
@@ -64,13 +63,15 @@ export async function prepareListings(input: {
   for (const listing of input.listings) {
     const id = `${listing.sourcePlatform}:${listing.externalId}`;
     if (seen.has(id)) continue;
-    const costPriceCzk =
+    const amountCzk =
       listing.currency.toUpperCase() === "CZK"
         ? convertToCzk(listing.price, "CZK", { source: "cnb", validFor: "", czkPerUnit: { CZK: 1 } })
         : input.rates
           ? convertToCzk(listing.price, listing.currency, input.rates)
           : null;
-    if (costPriceCzk === null) continue;
+    if (amountCzk === null) continue;
+    const ownSelling = listing.priceIsSelling === true && listing.sourcePlatform === "internal_stock";
+    if (ownSelling && listing.currency.toUpperCase() !== "CZK") continue;
 
     const translated = await input.translate(listing);
     const condition = listing.condition ?? translated?.condition ?? null;
@@ -98,8 +99,8 @@ export async function prepareListings(input: {
         conditionDetail,
         originKind,
         sourcePlatform: listing.sourcePlatform,
-        costPriceCzk,
-        internalProjectTag: listing.internalProjectTag ?? input.projectTag,
+        costPriceCzk: amountCzk,
+        sellingPriceCzk: ownSelling ? amountCzk : undefined,
         images,
       });
       seen.add(id);

@@ -56,7 +56,6 @@ function deps(overrides: Partial<SearchDeps> = {}): SearchDeps {
     translate: async () => null,
     images: new ImageLinkStore(),
     sessions: createMemorySessionRecorder(),
-    projectTag: "damedily",
     firstBudgetMs: 1_000,
     restBudgetMs: 1_000,
     rank: async () => null,
@@ -132,7 +131,7 @@ describe("SSE hledání", () => {
     ]);
 
     const offers = events.filter((event) => event.type === "offer").map((event) => event.offer as { sellingPriceCzk: number; titleCs: string; images: string[] });
-    expect(offers.map((offer) => offer.sellingPriceCzk)).toEqual([500, 600, 680]);
+    expect(offers.map((offer) => offer.sellingPriceCzk)).toEqual([540, 640, 720]);
     expect(offers[0]?.titleCs).toBe("Kotouč");
     expect(offers[0]?.images[0]).toMatch(/^\/api\/media\//);
     expect(offers[0]?.images[0]).not.toContain("example");
@@ -165,7 +164,6 @@ describe("SSE hledání", () => {
               sourcePlatform: "internal_stock",
               externalId: "stock",
               price: 800,
-              internalProjectTag: "damedily",
             }),
           ]),
           connector(
@@ -178,7 +176,7 @@ describe("SSE hledání", () => {
     );
     const events = await readEvents(response);
     const offers = events.filter((event) => event.type === "offer").map((event) => event.offer as { sellingPriceCzk: number });
-    expect(offers.map((offer) => offer.sellingPriceCzk)).toEqual([1200, 150]);
+    expect(offers.map((offer) => offer.sellingPriceCzk)).toEqual([1280, 160]);
     expect(events.filter((event) => event.type === "status").map((event) => event.status)).toEqual([
       "first_found",
       "searching_alternatives",
@@ -214,7 +212,25 @@ describe("SSE hledání", () => {
     const offers = (await readEvents(response))
       .filter((event) => event.type === "offer")
       .map((event) => (event.offer as { sellingPriceCzk: number }).sellingPriceCzk);
-    expect(offers).toEqual([300, 1350, 600]);
+    expect(offers).toEqual([320, 1440, 640]);
+  });
+
+  it("cizí nabídka s příznakem prodejní ceny se pořád přepočte marží", async () => {
+    const response = await handleSearchPost(
+      new Request("http://127.0.0.1/api/search/stream", {
+        method: "POST",
+        body: JSON.stringify({ oemNumber: "1K0615301" }),
+      }),
+      deps({
+        connectors: [
+          connector("ovoko", [
+            listing({ sourcePlatform: "ovoko", externalId: "flag", price: 1000, priceIsSelling: true }),
+          ]),
+        ],
+      }),
+    );
+    const offers = (await readEvents(response)).filter((event) => event.type === "offer");
+    expect((offers[0]?.offer as { sellingPriceCzk: number }).sellingPriceCzk).toBe(1600);
   });
 
   it("prázdný dotaz odmítne ještě před streamem", async () => {
@@ -243,6 +259,6 @@ describe("SSE hledání", () => {
     const events = await readEvents(response);
     const offers = events.filter((event) => event.type === "offer");
     expect(offers).toHaveLength(1);
-    expect((offers[0]?.offer as { sellingPriceCzk: number }).sellingPriceCzk).toBe(370);
+    expect((offers[0]?.offer as { sellingPriceCzk: number }).sellingPriceCzk).toBe(400);
   });
 });

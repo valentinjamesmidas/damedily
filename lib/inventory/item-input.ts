@@ -1,15 +1,14 @@
 import { sellingPrice } from "@/lib/pricing";
-import { TAG_REQUIRED_MESSAGE } from "@/lib/copy";
 
 export const PLACEMENTS = ["action_offer", "permanent_offer", "van_tires"] as const;
-export const PROJECT_TAG_VALUES = ["ekokladno", "damedily"] as const;
+export const STOCK_SOURCES = ["vlastni_sklad", "cizi_zdroj", "dropship"] as const;
 export const CONDITIONS = ["pouzity", "novy"] as const;
 export const ORIGINS = ["oem", "druhovyroba"] as const;
 export const SEASONS = ["letni", "zimni", "celorocni"] as const;
 export const DIAMETERS = ["R15C", "R16C", "R17C"] as const;
 
 export type Placement = (typeof PLACEMENTS)[number];
-export type ProjectTagValue = (typeof PROJECT_TAG_VALUES)[number];
+export type StockSource = (typeof STOCK_SOURCES)[number];
 export type Season = (typeof SEASONS)[number];
 export type TireDiameter = (typeof DIAMETERS)[number];
 
@@ -33,7 +32,7 @@ export type InventoryInput = {
   sellingPriceCzk: number;
   stockQuantity: number;
   placementType: Placement;
-  internalProjectTag: ProjectTagValue;
+  source: StockSource;
   images: string[];
   vehicleText: string;
   tireSpecs: TireSpecsInput | null;
@@ -87,9 +86,6 @@ function readTire(value: unknown): TireSpecsInput | null | "invalid" {
 
 export function validateInventoryInput(input: unknown): { ok: true; value: InventoryInput } | { ok: false; message: string } {
   if (!isRecord(input)) return { ok: false, message: "Formulář je neúplný." };
-  if (input.internalProjectTag !== "ekokladno" && input.internalProjectTag !== "damedily") {
-    return { ok: false, message: TAG_REQUIRED_MESSAGE };
-  }
 
   const titleCs = text(input.titleCs, 160);
   const oemNumber = text(input.oemNumber, 40);
@@ -108,6 +104,9 @@ export function validateInventoryInput(input: unknown): { ok: true; value: Inven
   if (stockQuantity === null) return { ok: false, message: "Počet musí být celé nezáporné číslo." };
   if (input.placementType !== "action_offer" && input.placementType !== "permanent_offer" && input.placementType !== "van_tires") {
     return { ok: false, message: "Vyberte umístění." };
+  }
+  if (input.source !== "vlastni_sklad" && input.source !== "cizi_zdroj" && input.source !== "dropship") {
+    return { ok: false, message: "Vyberte původ skladu." };
   }
   if (input.originKind != null && input.originKind !== "oem" && input.originKind !== "druhovyroba") {
     return { ok: false, message: "Původ dílu je OEM, druhovýroba, nebo ho nechte prázdný." };
@@ -149,7 +148,7 @@ export function validateInventoryInput(input: unknown): { ok: true; value: Inven
       sellingPriceCzk: explicitSelling ?? sellingPrice(costPriceCzk),
       stockQuantity,
       placementType: input.placementType,
-      internalProjectTag: input.internalProjectTag,
+      source: input.source,
       images,
       vehicleText,
       tireSpecs: input.placementType === "van_tires" ? tireSpecs : null,

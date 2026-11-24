@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(84);
+select plan(118);
 
 -- ---------------------------------------------------------------------------
 -- Katalog
@@ -50,6 +50,7 @@ select ok(
 select has_column('public', 'public_inventory', 'selling_price_czk', 'view skladu má prodejní cenu');
 select hasnt_column('public', 'public_inventory', 'cost_price_czk', 'view skladu nemá nákupní cenu');
 select hasnt_column('public', 'public_inventory', 'internal_project_tag', 'view skladu nemá interní tag');
+select hasnt_column('public', 'public_inventory', 'source', 'view skladu nemá původ položky');
 select hasnt_column('public', 'public_inventory', 'source_platform', 'view skladu nemá zdroj');
 select hasnt_column('public', 'public_inventory', 'supplier_order_ref', 'view skladu nemá referenci dodavatele');
 select has_column('public', 'inventory_items', 'part_condition', 'sklad umí uložit použitý nebo nový');
@@ -58,6 +59,37 @@ select has_column('public', 'inventory_items', 'oem_compact', 'sklad má kompakt
 select has_column('public', 'public_inventory', 'part_condition', 'veřejný sklad ukazuje, jestli je díl použitý nebo nový');
 select has_column('public', 'public_inventory', 'origin_kind', 'veřejný sklad ukazuje OEM nebo druhovýrobu');
 select hasnt_column('public', 'public_inventory', 'oem_compact', 'veřejný sklad kompaktní OEM neukazuje');
+select has_column('public', 'inventory_items', 'source', 'sklad má původ položky');
+select hasnt_column('public', 'inventory_items', 'internal_project_tag', 'sklad nemá interní tag');
+select hasnt_column('public', 'order_items', 'internal_project_tag', 'položka objednávky nemá interní tag');
+select has_column('public', 'order_items', 'line_kind', 'položka objednávky rozliší zboží, dopravu a službu');
+select ok(
+  not exists (
+    select 1
+    from pg_type as t
+    join pg_namespace as n on n.oid = t.typnamespace
+    where n.nspname = 'public'
+      and t.typname = 'project_tag'
+  ),
+  'enum project_tag neexistuje'
+);
+select ok(
+  coalesce((
+    select not ('security_invoker=true' = any (c.reloptions))
+    from pg_class as c
+    join pg_namespace as n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relname = 'public_inventory'
+  ), true)
+  and coalesce((
+    select not ('security_invoker=true' = any (c.reloptions))
+    from pg_class as c
+    join pg_namespace as n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relname = 'customer_order_items'
+  ), true),
+  'veřejná view neběží jako security_invoker'
+);
 select has_column('public', 'inventory_items', 'condition_detail', 'sklad umí uložit popis stavu');
 select has_column('public', 'public_inventory', 'condition_detail', 'veřejný sklad ukazuje popis stavu');
 select ok(
@@ -78,13 +110,12 @@ select hasnt_column('public', 'customer_order_items', 'source_platform', 'zákaz
 select hasnt_column('public', 'customer_order_items', 'supplier_order_ref', 'zákaznické položky nemají referenci dodavatele');
 
 select ok(
-  exists (
+  not exists (
     select 1
     from pg_constraint
     where conname = 'orders_total_amount_czk_min'
-      and contype = 'c'
   ),
-  'objednávka má CHECK na minimum 2 000 Kč'
+  'minimum už není CHECK na total_amount_czk'
 );
 
 -- ---------------------------------------------------------------------------
@@ -173,7 +204,7 @@ insert into public.inventory_items (
   selling_price_czk,
   stock_quantity,
   placement_type,
-  internal_project_tag
+  source
 ) values (
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   'Brzdový kotouč',
@@ -183,15 +214,15 @@ insert into public.inventory_items (
   150.00,
   4,
   'action_offer',
-  'damedily'
+  'vlastni_sklad'
 );
 
 select throws_ok(
   $$insert into public.inventory_items (
       title_cs, oem_number, part_category, cost_price_czk, selling_price_czk,
-      placement_type, internal_project_tag, part_condition
+      placement_type, source, part_condition
     ) values (
-      'Špatný stav', 'OEM-BAD', 'Brzdy', 10, 20, 'action_offer', 'damedily', 'rozbity'
+      'Špatný stav', 'OEM-BAD', 'Brzdy', 10, 20, 'action_offer', 'vlastni_sklad', 'rozbity'
     )$$,
   '23514',
   'new row for relation "inventory_items" violates check constraint "inventory_items_part_condition_check"',
@@ -220,10 +251,10 @@ insert into public.order_items (
   oem_number,
   source_platform,
   supplier_order_ref,
-  internal_project_tag,
   cost_price_czk,
   selling_price_czk,
-  quantity
+  quantity,
+  line_kind
 ) values
   (
     'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
@@ -232,10 +263,10 @@ insert into public.order_items (
     'OEM-123',
     'ovoko',
     'SUP-SECRET-RLS-991',
-    'ekokladno',
     80.00,
-    150.00,
-    1
+    2500.00,
+    1,
+    'zbozi'
   ),
   (
     'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
@@ -244,10 +275,10 @@ insert into public.order_items (
     'OEM-999',
     'autodoc',
     'SUP-SECRET-RLS-992',
-    'damedily',
     90.00,
-    140.00,
-    1
+    2100.00,
+    1,
+    'zbozi'
   );
 
 insert into public.search_sessions (id, user_id, query_type, raw_query, status)
@@ -292,13 +323,13 @@ select throws_ok(
   'anon nesmí číst inventory_items'
 );
 select throws_ok(
-  'select cost_price_czk, internal_project_tag from public.inventory_items',
+  'select cost_price_czk, source from public.inventory_items',
   '42501',
   'permission denied for table inventory_items',
-  'anon nesmí číst nákupní cenu ani tag skladu'
+  'anon nesmí číst nákupní cenu ani původ skladu'
 );
 select throws_ok(
-  'select source_platform, supplier_order_ref, cost_price_czk, internal_project_tag from public.order_items',
+  'select source_platform, supplier_order_ref, cost_price_czk from public.order_items',
   '42501',
   'permission denied for table order_items',
   'anon nesmí číst order_items'
@@ -350,12 +381,14 @@ select ok(
         to_jsonb(v) ?| array[
           'cost_price_czk',
           'internal_project_tag',
+          'source',
           'source_platform',
           'supplier_order_ref'
         ]
       )
       and to_jsonb(v)::text not like '%ekokladno%'
       and to_jsonb(v)::text not like '%damedily%'
+      and to_jsonb(v)::text not like '%vlastni_sklad%'
       and to_jsonb(v)::text not like '%ovoko%'
       and to_jsonb(v)::text not like '%SUP-SECRET-RLS-%'
     )
@@ -386,11 +419,11 @@ select is_empty(
   'zákazník nedostane nákupní cenu skladu'
 );
 select is_empty(
-  $$select id from public.inventory_items where internal_project_tag = 'damedily'$$,
-  'zákazník podle interního tagu sklad nevyhledá'
+  $$select id from public.inventory_items where source = 'vlastni_sklad'$$,
+  'zákazník podle původu sklad nevyhledá'
 );
 select is_empty(
-  'select source_platform, supplier_order_ref, cost_price_czk, internal_project_tag from public.order_items',
+  'select source_platform, supplier_order_ref, cost_price_czk from public.order_items',
   'zákazník z order_items nedostane citlivé sloupce'
 );
 
@@ -410,12 +443,14 @@ select ok(
         to_jsonb(v) ?| array[
           'cost_price_czk',
           'internal_project_tag',
+          'source',
           'source_platform',
           'supplier_order_ref'
         ]
       )
       and to_jsonb(v)::text not like '%ekokladno%'
       and to_jsonb(v)::text not like '%damedily%'
+      and to_jsonb(v)::text not like '%vlastni_sklad%'
       and to_jsonb(v)::text not like '%SUP-SECRET-RLS-%'
     )
     from public.public_inventory as v
@@ -470,30 +505,33 @@ select throws_ok(
 );
 
 select throws_ok(
-  $$insert into public.orders (order_number, user_id, total_amount_czk)
-    values ('DD-LOW-1999', '11111111-1111-4111-8111-111111111111', 1999)$$,
-  '23514',
-  'new row for relation "orders" violates check constraint "orders_total_amount_czk_min"',
-  'objednávka za 1 999 Kč neprojde CHECK'
-);
-select throws_ok(
-  $$insert into public.orders (order_number, user_id, total_amount_czk)
-    values ('DD-LOW-HALERE', '11111111-1111-4111-8111-111111111111', 1999.99)$$,
-  '23514',
-  'new row for relation "orders" violates check constraint "orders_total_amount_czk_min"',
-  'objednávka za 1 999,99 Kč neprojde CHECK'
-);
-select lives_ok(
-  $$insert into public.orders (order_number, user_id, total_amount_czk)
-    values ('DD-OK-2000', '11111111-1111-4111-8111-111111111111', 2000)$$,
-  'objednávka přesně za 2 000 Kč projde'
+  $$insert into public.orders (order_number, user_id, total_amount_czk, payment_status)
+    values ('DD-CUST', '11111111-1111-4111-8111-111111111111', 2500, 'captured')$$,
+  '42501',
+  'Objednávku smí založit jen administrátor.',
+  'zákazník nezaloží objednávku a nenastaví stav platby'
 );
 select throws_ok(
   $$insert into public.orders (order_number, user_id, total_amount_czk)
     values ('DD-CIZI', '33333333-3333-4333-8333-333333333333', 2500)$$,
   '42501',
-  'new row violates row-level security policy for table "orders"',
-  'zákazník nezaloží objednávku jinému uživateli'
+  'Objednávku smí založit jen administrátor.',
+  'zákazník nezaloží objednávku ani jinému uživateli'
+);
+select throws_ok(
+  $$update public.profiles set email = 'zmena@damedily.test' where id = '11111111-1111-4111-8111-111111111111'$$,
+  '42501',
+  'Změna e-mailu je povolená jen administrátorovi.',
+  'zákazník si nemění e-mail'
+);
+select is(
+  (select email from public.profiles where id = '11111111-1111-4111-8111-111111111111'),
+  'zakaznik@damedily.test',
+  'e-mail zákazníka zůstal'
+);
+select lives_ok(
+  $$update public.profiles set full_name = 'Jan Zákazník' where id = '11111111-1111-4111-8111-111111111111'$$,
+  'zákazník si může upravit jméno'
 );
 
 select is(
@@ -516,7 +554,7 @@ select is(
     select count(*)::int
     from public.customer_order_items
     where id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
-      and selling_price_czk = 150
+      and selling_price_czk = 2500
   ),
   1,
   'zákazník vidí vlastní položku a její prodejní cenu'
@@ -545,6 +583,7 @@ select ok(
         to_jsonb(v) ?| array[
           'cost_price_czk',
           'internal_project_tag',
+          'source',
           'source_platform',
           'supplier_order_ref'
         ]
@@ -583,12 +622,12 @@ select is(
 );
 select is(
   (
-    select internal_project_tag::text
+    select source
     from public.inventory_items
     where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
   ),
-  'damedily',
-  'admin vidí interní tag skladu'
+  'vlastni_sklad',
+  'admin vidí, že kus je vlastní sklad DámeDíly'
 );
 select is(
   (
@@ -619,12 +658,12 @@ select is(
 );
 select is(
   (
-    select internal_project_tag::text
+    select line_kind
     from public.order_items
     where id = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
   ),
-  'damedily',
-  'admin vidí tag cizí položky'
+  'zbozi',
+  'admin vidí, že cizí položka je zboží'
 );
 select is(
   (select count(*)::int from public.profiles),
@@ -649,6 +688,192 @@ select results_eq(
   array['admin'],
   'admin může změnit roli'
 );
+
+select lives_ok(
+  $$update public.profiles set email = 'zakaznik-novy@damedily.test' where id = '11111111-1111-4111-8111-111111111111'$$,
+  'admin může změnit e-mail zákazníka'
+);
+select lives_ok(
+  $$update public.orders set payment_status = 'captured' where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'$$,
+  'admin může změnit stav platby'
+);
+
+select lives_ok(
+  $$insert into public.orders (id, order_number, user_id, total_amount_czk)
+    values ('12121212-1212-4121-8121-121212121212', 'DD-GOODS-OK', '11111111-1111-4111-8111-111111111111', 100)$$,
+  'objednávka s celkovou částkou pod 2 000 Kč projde, minimum je na zboží'
+);
+select lives_ok(
+  $$insert into public.order_items (
+      order_id, item_title_cs, oem_number, source_platform, cost_price_czk, selling_price_czk, quantity, line_kind
+    ) values
+      ('12121212-1212-4121-8121-121212121212', 'Zboží', 'OEM-OK', 'internal_stock', 1000, 2000, 1, 'zbozi'),
+      ('12121212-1212-4121-8121-121212121212', 'Montáž', 'OEM-OK', 'internal_stock', 0, 300, 1, 'sluzba')$$,
+  'zboží za 2 000 Kč a služba navíc projdou'
+);
+
+select lives_ok(
+  $$insert into public.orders (id, order_number, user_id, total_amount_czk)
+    values ('13131313-1313-4131-8131-131313131313', 'DD-GOODS-LOW', '11111111-1111-4111-8111-111111111111', 5000)$$,
+  'admin založí objednávku před vložením řádků'
+);
+select throws_ok(
+  $$insert into public.order_items (
+      order_id, item_title_cs, oem_number, source_platform, cost_price_czk, selling_price_czk, quantity, line_kind
+    ) values (
+      '13131313-1313-4131-8131-131313131313', 'Málo zboží', 'OEM-LOW', 'internal_stock', 100, 1999, 1, 'zbozi'
+    )$$,
+  '23514',
+  'Součet zboží včetně DPH musí být alespoň 2 000 Kč.',
+  'zboží za 1 999 Kč neprojde'
+);
+select throws_ok(
+  $$insert into public.order_items (
+      order_id, item_title_cs, oem_number, source_platform, cost_price_czk, selling_price_czk, quantity, line_kind
+    ) values
+      ('13131313-1313-4131-8131-131313131313', 'Zboží', 'OEM-SHIP', 'internal_stock', 800, 1500, 1, 'zbozi'),
+      ('13131313-1313-4131-8131-131313131313', 'Doprava', 'DOPRAVA', 'internal_stock', 0, 600, 1, 'doprava')$$,
+  '23514',
+  'Součet zboží včetně DPH musí být alespoň 2 000 Kč.',
+  'doprava se do minima 2 000 Kč nepočítá'
+);
+
+select throws_ok(
+  $$insert into public.inventory_items (
+      title_cs, oem_number, part_category, cost_price_czk, selling_price_czk,
+      placement_type, source
+    ) values (
+      'Cizí vlastník', 'OEM-SRC', 'Brzdy', 10, 20, 'action_offer', 'ekokladno'
+    )$$,
+  '23514',
+  'new row for relation "inventory_items" violates check constraint "inventory_items_source_check"',
+  'původ skladu mimo vlastni_sklad, cizi_zdroj a dropship neprojde'
+);
+select lives_ok(
+  $$insert into public.inventory_items (
+      id, title_cs, oem_number, part_category, cost_price_czk, selling_price_czk,
+      placement_type, source
+    ) values (
+      '14141414-1414-4141-8141-141414141414', 'Dropship kus', 'OEM-DROP', 'Brzdy', 10, 20, 'action_offer', 'dropship'
+    )$$,
+  'dropship je povolený původ'
+);
+select ok(
+  not exists (
+    select 1
+    from public.inventory_items
+    where id <> '14141414-1414-4141-8141-141414141414'
+      and source <> 'vlastni_sklad'
+  ),
+  'stávající sklad je vlastní sklad DámeDíly s.r.o.'
+);
+
+select has_table('archive', 'inventory_project_tag', 'archiv tagu skladu je mimo public');
+select has_table('archive', 'order_item_project_tag', 'archiv tagu položek je mimo public');
+
+select lives_ok(
+  $$insert into public.orders (id, order_number, user_id, total_amount_czk)
+    values ('15151515-1515-4151-8151-151515151515', 'DD-PAIR', '11111111-1111-4111-8111-111111111111', 0)$$,
+  'admin založí objednávku pro dva kusy zboží'
+);
+select lives_ok(
+  $$insert into public.order_items (
+      id, order_id, item_title_cs, oem_number, source_platform, cost_price_czk, selling_price_czk, quantity, line_kind
+    ) values
+      ('16161616-1616-4161-8161-161616161616', '15151515-1515-4151-8151-151515151515', 'První', 'OEM-A', 'internal_stock', 400, 1000, 1, 'zbozi'),
+      ('17171717-1717-4171-8171-171717171717', '15151515-1515-4151-8151-151515151515', 'Druhý', 'OEM-B', 'internal_stock', 400, 1000, 1, 'zbozi')$$,
+  'dvakrát 1 000 Kč zboží projde'
+);
+select is(
+  (select total_amount_czk from public.orders where id = '15151515-1515-4151-8151-151515151515'),
+  2000.00::numeric,
+  'celková částka je součet řádků'
+);
+select throws_ok(
+  $$update public.order_items set selling_price_czk = 500 where id = '16161616-1616-4161-8161-161616161616'$$,
+  '23514',
+  'Součet zboží včetně DPH musí být alespoň 2 000 Kč.',
+  'snížení řádku pod 2 000 Kč neprojde'
+);
+select throws_ok(
+  $$delete from public.order_items where id = '16161616-1616-4161-8161-161616161616'$$,
+  '23514',
+  'Součet zboží včetně DPH musí být alespoň 2 000 Kč.',
+  'smazání řádku pod 2 000 Kč neprojde'
+);
+select lives_ok(
+  $$delete from public.orders where id = '15151515-1515-4151-8151-151515151515'$$,
+  'smazání celé objednávky projde'
+);
+select lives_ok(
+  $$select public.insert_order_with_lines(
+      '{"id":"19191919-1919-4191-8191-191919191919","order_number":"DD-RPC-OK","user_id":"11111111-1111-4111-8111-111111111111","total_amount_czk":0}'::jsonb,
+      '[
+        {"item_title_cs":"První","oem_number":"OEM-1","source_platform":"internal_stock","cost_price_czk":800,"selling_price_czk":1500,"quantity":1,"line_kind":"zbozi"},
+        {"item_title_cs":"Druhý","oem_number":"OEM-2","source_platform":"internal_stock","cost_price_czk":600,"selling_price_czk":1000,"quantity":1,"line_kind":"zbozi"}
+      ]'::jsonb
+    )$$,
+  '1500 a 1000 Kč zboží v jednom volání projde'
+);
+select throws_ok(
+  $$select public.insert_order_with_lines(
+      '{"order_number":"DD-RPC-LOW","user_id":"11111111-1111-4111-8111-111111111111","total_amount_czk":0}'::jsonb,
+      '[
+        {"item_title_cs":"První","oem_number":"OEM-3","source_platform":"internal_stock","cost_price_czk":500,"selling_price_czk":1000,"quantity":1,"line_kind":"zbozi"},
+        {"item_title_cs":"Druhý","oem_number":"OEM-4","source_platform":"internal_stock","cost_price_czk":500,"selling_price_czk":999,"quantity":1,"line_kind":"zbozi"}
+      ]'::jsonb
+    )$$,
+  '23514',
+  'Součet zboží včetně DPH musí být alespoň 2 000 Kč.',
+  '1000 a 999 Kč v jednom volání neprojde'
+);
+select lives_ok(
+  $$delete from public.orders where id = '19191919-1919-4191-8191-191919191919'$$,
+  'objednávka z funkce se dá smazat'
+);
+
+select lives_ok(
+  $$insert into public.orders (id, order_number, user_id, total_amount_czk)
+    values ('18181818-1818-4181-8181-181818181818', 'DD-EMPTY', '11111111-1111-4111-8111-111111111111', 0)$$,
+  'prázdná objednávka se vloží ještě před commitem'
+);
+select throws_ok(
+  $$set constraints orders_goods_deferred immediate$$,
+  '23514',
+  'Součet zboží včetně DPH musí být alespoň 2 000 Kč.',
+  'prázdná objednávka na konci transakce neprojde'
+);
+select lives_ok(
+  $$delete from public.orders where id = '18181818-1818-4181-8181-181818181818'$$,
+  'nedokončená prázdná objednávka se dá smazat'
+);
+
+select ok(
+  exists (
+    select 1
+    from pg_trigger
+    where tgname = 'auth_users_enforce_email'
+      and tgrelid = 'auth.users'::regclass
+      and not tgisinternal
+  ),
+  'auth.users má trigger proti změně přihlašovacího e-mailu'
+);
+select ok(
+  position(
+    'Změna přihlašovacího e-mailu je vypnutá.' in pg_get_functiondef('private.enforce_auth_user_email()'::regprocedure)
+  ) > 0
+  and position(
+    'supabase_auth_admin' in pg_get_functiondef('private.enforce_auth_user_email()'::regprocedure)
+  ) = 0,
+  'změnu e-mailu pustí jen postgres, supabase_admin, service_role nebo administrátor'
+);
+select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"22222222-2222-4222-8222-222222222222","role":"authenticated"}',
+  true
+);
+set local role authenticated;
 
 reset role;
 select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);

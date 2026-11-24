@@ -46,7 +46,6 @@ export function createSearchRuntime(env: Record<string, string | undefined> = pr
     translate: createListingTranslator(client, cache),
     images: getImageLinkStore(),
     sessions: createSupabaseSessionRecorder(env),
-    projectTag: config.projectTag,
     firstBudgetMs: config.firstBudgetMs,
     restBudgetMs: config.restBudgetMs,
     xai: client,

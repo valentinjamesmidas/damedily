@@ -1,4 +1,4 @@
-import type { Placement, ProjectTagValue, TireSpecsInput } from "@/lib/inventory/item-input";
+import type { Placement, StockSource, TireSpecsInput } from "@/lib/inventory/item-input";
 
 export type AdminItem = {
   id: string;
@@ -12,7 +12,7 @@ export type AdminItem = {
   sellingPriceCzk: number;
   stockQuantity: number;
   placementType: Placement;
-  internalProjectTag: ProjectTagValue;
+  source: StockSource;
   images: string[];
   vehicleText: string;
   tireSpecs: TireSpecsInput | null;
@@ -65,11 +65,10 @@ export function parseAdminItems(payload: unknown): AdminItem[] {
     const selling = money(row.selling_price_czk);
     const stock = money(row.stock_quantity);
     const placement = row.placement_type;
-    const tag = row.internal_project_tag;
     if (typeof row.id !== "string" || typeof row.title_cs !== "string" || typeof row.oem_number !== "string") continue;
     if (typeof row.part_category !== "string" || cost === null || selling === null || stock === null) continue;
     if (placement !== "action_offer" && placement !== "permanent_offer" && placement !== "van_tires") continue;
-    if (tag !== "ekokladno" && tag !== "damedily") continue;
+    if (row.source !== "vlastni_sklad" && row.source !== "cizi_zdroj" && row.source !== "dropship") continue;
     const condition = row.part_condition === "pouzity" || row.part_condition === "novy" ? row.part_condition : null;
     const origin = row.origin_kind === "oem" || row.origin_kind === "druhovyroba" ? row.origin_kind : null;
     items.push({
@@ -84,7 +83,7 @@ export function parseAdminItems(payload: unknown): AdminItem[] {
       sellingPriceCzk: selling,
       stockQuantity: stock,
       placementType: placement,
-      internalProjectTag: tag,
+      source: row.source,
       images: Array.isArray(row.images) ? row.images.filter((image): image is string => typeof image === "string") : [],
       vehicleText: vehicleText(row.vehicle_compatibility),
       tireSpecs: tireSpecs(row.tire_specs),

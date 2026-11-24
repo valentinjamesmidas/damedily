@@ -24,10 +24,6 @@ export const SOURCE_PLATFORMS = [
 
 export type SourcePlatform = (typeof SOURCE_PLATFORMS)[number];
 
-export const PROJECT_TAGS = ["ekokladno", "damedily"] as const;
-
-export type ProjectTag = (typeof PROJECT_TAGS)[number];
-
 export type PartCondition = "pouzity" | "novy";
 
 export type PartOriginKind = "oem" | "druhovyroba" | "neuvedeno";
@@ -55,7 +51,7 @@ const FALSE_LOCATION_CLAIM =
   /v\s+čr\b|v\s+česku|české republice|už\s+leží|již\s+skladem|ověřený uzel/i;
 
 /**
- * Veřejná nabídka. Schválně tu nejsou nákupní cena, zdroj, interní tag ani AI skóre.
+ * Veřejná nabídka. Schválně tu nejsou nákupní cena, zdroj ani AI skóre.
  * Serializér vypisuje jen tato pole.
  */
 export type PublicOffer = {
@@ -83,7 +79,8 @@ export type OfferDraft = {
   originKind?: Exclude<PartOriginKind, "neuvedeno"> | null;
   sourcePlatform: SourcePlatform;
   costPriceCzk: number;
-  internalProjectTag: ProjectTag;
+  /** Uložená prodejní cena vlastního skladu. Když je vyplněná, marže se znovu nepočítá. */
+  sellingPriceCzk?: number;
   aiScore?: number | null;
   images?: readonly string[];
 };
@@ -157,16 +154,24 @@ function assertNoFalseLocationClaim(value: string, label: string): void {
   }
 }
 
+function publishedSellingPrice(draft: OfferDraft): number {
+  if (draft.sellingPriceCzk != null) {
+    if (!Number.isFinite(draft.sellingPriceCzk) || draft.sellingPriceCzk < 0) {
+      throw new TypeError("Prodejní cena musí být nezáporné konečné číslo.");
+    }
+    return Math.round(draft.sellingPriceCzk * 100) / 100;
+  }
+  return sellingPrice(draft.costPriceCzk);
+}
+
 /**
  * Z interního návrhu udělá veřejnou nabídku.
- * Prodejní cenu počítá výhradně přes sellingPrice (marže ×1,5 nahoru na desetikoruny).
+ * Cizí nabídka dostane cenu přes sellingPrice (pásma marže, nahoru na desetikoruny).
+ * Vlastní sklad předá uloženou prodejní cenu a nákupní cena do nabídky nejde.
  */
 export function toPublicOffer(draft: OfferDraft): PublicOffer {
   if (!SOURCE_PLATFORMS.includes(draft.sourcePlatform)) {
     throw new TypeError("Neznámý zdroj nabídky.");
-  }
-  if (!PROJECT_TAGS.includes(draft.internalProjectTag)) {
-    throw new TypeError("Chybí platný interní tag projektu.");
   }
   if (draft.condition !== "pouzity" && draft.condition !== "novy") {
     throw new TypeError("U nabídky musí být uvedeno, zda je díl použitý, nebo nový.");
@@ -189,7 +194,7 @@ export function toPublicOffer(draft: OfferDraft): PublicOffer {
     originLabel:
       originKind === "oem" ? "OEM" : originKind === "druhovyroba" ? "Druhovýroba" : "V podkladu neuvedeno",
     warehouseLabel,
-    sellingPriceCzk: sellingPrice(draft.costPriceCzk),
+    sellingPriceCzk: publishedSellingPrice(draft),
     deliveryLeadTime,
     images: publicImages(draft.images),
   };
