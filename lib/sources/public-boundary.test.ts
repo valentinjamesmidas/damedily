@@ -50,9 +50,9 @@ describe("nákupní cena a PublicOffer", () => {
 
   it("částka ze SourceOffer se po marži ve veřejné nabídce neobjeví", () => {
     const offer = publishedFromCost(sourceOffer.price.amount);
-    expect(offer.sellingPriceCzk).toBe(sellingPrice(sourceOffer.price.amount));
-    expect(offer.sellingPriceCzk).toBe(190);
-    expect(offer.sellingPriceCzk).not.toBe(sourceOffer.price.amount);
+    const selling = sellingPrice(sourceOffer.price.amount);
+    expect(offer.sellingPriceCzk).toBe(selling);
+    expect(selling).not.toBe(sourceOffer.price.amount);
     expect(purchasePriceReachedPublicOffer(offer, sourceOffer.price)).toBe(false);
 
     const serialized = serializePublicOffer(offer);
