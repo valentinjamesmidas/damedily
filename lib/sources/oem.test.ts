@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isCacheableOem, normalizeOem } from "./oem";
+import { isCacheableOem, normalizeOem, oemLookupPhrases } from "./oem";
 
 describe("normalizeOem", () => {
   it("dá velká písmena a smaže mezery, tečky a pomlčky", () => {
@@ -27,8 +27,15 @@ describe("normalizeOem", () => {
     expect(normalizeOem("1K0\u2212615")).toBe("1K0615");
   });
 
-  it("nechá lomítko, podtržítko, plus i čárku", () => {
-    expect(normalizeOem("a/b")).toBe("A/B");
+  it("lomítko bere jako pomlčku a pošle původní i kompaktní tvar", () => {
+    expect(normalizeOem("a/b")).toBe("AB");
+    expect(normalizeOem("1k0/615 301")).toBe("1K0615301");
+    expect(oemLookupPhrases("1K0 615 301 AA")).toEqual(["1K0 615 301 AA", "1K0615301AA"]);
+    expect(oemLookupPhrases("1K0615301AA")).toEqual(["1K0615301AA"]);
+    expect(oemLookupPhrases("  1k0/615.301 AA ")).toEqual(["1k0/615.301 AA", "1K0615301AA"]);
+  });
+
+  it("nechá podtržítko, plus i čárku", () => {
     expect(normalizeOem("a_b")).toBe("A_B");
     expect(normalizeOem("a+b")).toBe("A+B");
     expect(normalizeOem("a,b")).toBe("A,B");
@@ -58,7 +65,7 @@ describe("isCacheableOem", () => {
     expect(isCacheableOem("")).toBe(false);
     expect(isCacheableOem("1k0615301")).toBe(false);
     expect(isCacheableOem("1K0-615")).toBe(false);
-    expect(isCacheableOem("A/B")).toBe(false);
+    expect(isCacheableOem(normalizeOem("A/B"))).toBe(true);
     expect(isCacheableOem("A_B")).toBe(false);
     expect(isCacheableOem("A".repeat(81))).toBe(false);
   });
