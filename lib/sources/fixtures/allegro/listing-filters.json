@@ -1,0 +1,43 @@
+{
+  "_note": "Ručně psaná fixtura. Není ověřená proti živému Allegro API.",
+  "items": {
+    "promoted": [],
+    "regular": [
+      {
+        "id": "999",
+        "name": "Nemá se vrátit bez filtru stavu",
+        "sellingMode": {
+          "format": "BUY_NOW",
+          "price": { "amount": "1.00", "currency": "PLN" }
+        },
+        "stock": { "unit": "UNIT", "available": 1 }
+      }
+    ]
+  },
+  "filters": [
+    {
+      "id": "stan;drop",
+      "type": "MULTI",
+      "name": "Stan",
+      "values": [{ "value": "1", "name": "używane", "count": 1, "selected": false }]
+    },
+    {
+      "id": "parameter.500",
+      "type": "MULTI",
+      "name": "Kolor",
+      "values": [{ "value": "500_1", "name": "używane", "count": 1, "selected": false }]
+    },
+    {
+      "id": "parameter.11323",
+      "type": "MULTI",
+      "name": "Stan",
+      "values": [
+        { "value": "11323_2", "name": "używane", "count": 1, "selected": false },
+        { "value": "../x", "name": "używane", "count": 1, "selected": false },
+        { "value": "11323_9", "name": "zamiennik", "count": 1, "selected": false },
+        { "value": "11323_1", "name": "nowe", "count": 4, "selected": false },
+        { "value": "11323_238066", "name": "po zwrocie", "count": 1, "selected": false }
+      ]
+    }
+  ]
+}
