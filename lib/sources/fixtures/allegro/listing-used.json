@@ -1,0 +1,50 @@
+{
+  "items": {
+    "promoted": [
+      {
+        "id": "10000000001",
+        "name": "Wahacz przedni",
+        "seller": { "id": "24333635", "login": "shop", "company": true, "superSeller": false },
+        "promotion": { "emphasized": false, "bold": false, "highlight": false },
+        "delivery": {
+          "availableForFree": false,
+          "lowestPrice": { "amount": "12.00", "currency": "PLN" }
+        },
+        "images": [{ "url": "https://a.allegroimg.com/original/example" }],
+        "sellingMode": {
+          "format": "BUY_NOW",
+          "price": { "amount": "123.45", "currency": "PLN" },
+          "popularity": 1
+        },
+        "stock": { "unit": "UNIT", "available": 3 },
+        "category": { "id": "19031" }
+      }
+    ],
+    "regular": [
+      {
+        "id": "10000000001",
+        "name": "Wahacz przedni duplicitní",
+        "sellingMode": {
+          "format": "BUY_NOW",
+          "price": { "amount": "999.99", "currency": "PLN" }
+        },
+        "stock": { "unit": "UNIT", "available": 1 }
+      },
+      {
+        "id": "10000000009",
+        "name": "Aukce",
+        "sellingMode": {
+          "format": "AUCTION",
+          "price": { "amount": "10.00", "currency": "PLN" }
+        },
+        "stock": { "unit": "UNIT", "available": 1 }
+      },
+      {
+        "id": "10000000008",
+        "name": "Bez ceny",
+        "sellingMode": { "format": "BUY_NOW" },
+        "stock": { "unit": "UNIT", "available": 1 }
+      }
+    ]
+  }
+}

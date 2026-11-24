@@ -1,0 +1,17 @@
+{
+  "items": {
+    "promoted": [],
+    "regular": [
+      {
+        "id": "10000000002",
+        "name": "Wahacz zamiennik",
+        "sellingMode": {
+          "format": "BUY_NOW",
+          "price": { "amount": "80.00", "currency": "PLN" }
+        },
+        "stock": { "unit": "UNIT", "available": 1 },
+        "category": { "id": "19031" }
+      }
+    ]
+  }
+}
