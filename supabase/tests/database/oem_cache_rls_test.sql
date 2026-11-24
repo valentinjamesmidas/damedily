@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(62);
+select plan(64);
 
 select has_table('public', 'oem_cache', 'oem_cache existuje');
 select has_column('public', 'oem_cache', 'oem', 'oem_cache má oem');
@@ -234,6 +234,15 @@ select is(
   public.try_lease_oem_cache('LEASE1', 'allegro', now() + interval '1 minute'),
   false,
   'držený lease druhý worker nedostane'
+);
+select lives_ok(
+  $$select public.release_lease_oem_cache('LEASE1', 'allegro')$$,
+  'po chybě se lease pustí'
+);
+select is(
+  public.try_lease_oem_cache('LEASE1', 'allegro', now() + interval '1 minute'),
+  true,
+  'uvolněný klíč jde znovu zamknout'
 );
 reset role;
 

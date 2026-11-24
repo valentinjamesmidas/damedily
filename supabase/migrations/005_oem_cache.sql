@@ -223,12 +223,28 @@ $$;
 comment on function public.reset_source_health(text) is
   'Ruční reset vypnutí zdroje.';
 
+create or replace function public.release_lease_oem_cache(p_oem text, p_source text)
+returns void
+language sql
+security invoker
+set search_path = ''
+as $$
+  update public.oem_cache
+  set in_flight_until = null
+  where oem = p_oem and source = p_source;
+$$;
+
+comment on function public.release_lease_oem_cache(text, text) is
+  'Po chybě zdroje zámek pustí, aby další úloha mohla zdroj zkusit znovu.';
+
 revoke all on function public.purge_expired_oem_cache() from public, anon, authenticated;
 revoke all on function public.try_lease_oem_cache(text, text, timestamptz) from public, anon, authenticated;
+revoke all on function public.release_lease_oem_cache(text, text) from public, anon, authenticated;
 revoke all on function public.record_source_block(text, interval, integer) from public, anon, authenticated;
 revoke all on function public.reset_source_health(text) from public, anon, authenticated;
 
 grant execute on function public.purge_expired_oem_cache() to service_role;
 grant execute on function public.try_lease_oem_cache(text, text, timestamptz) to service_role;
+grant execute on function public.release_lease_oem_cache(text, text) to service_role;
 grant execute on function public.record_source_block(text, interval, integer) to service_role;
 grant execute on function public.reset_source_health(text) to service_role;
