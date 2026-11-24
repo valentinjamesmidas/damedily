@@ -58,7 +58,7 @@ Supabase Auth (e-mail + heslo, Magic Link, Google). /ucet/objednavky: aktivní i
 
 # 7. ADMIN (/admin, role admin)
 1. Skladový manažer: formulář (Název, OEM, Kategorie, Nákupní/Prodejní cena, Počet, Fotky – grok-vision předvyplní název a OEM). Umístění: [ ] Akční nabídka [ ] Stálá nabídka [ ] Pneu (Dodávky). ~~Povinný přepínač [ EKOKLADNO ] / [ DAMEDILY ]. Filtr skladu i tržeb podle tagu jedním klikem.~~ Místo tagu je původ skladu `vlastni_sklad` / `cizi_zdroj` / `dropship`.
-2. QC Hub: fronta automatických objednávek mířících na provozovnu; u každé skutečný dodavatel, nákupní cena, 50% marže, tag a tlačítko [Potvrdit ruční kontrolu & Expedovat klientovi].
+2. QC Hub: fronta automatických objednávek mířících na provozovnu; u každé skutečný dodavatel, nákupní cena, ~~50% marže, tag~~ prodejní cena podle pásem a původ `source`, a tlačítko [Potvrdit ruční kontrolu & Expedovat klientovi].
 
 # 8. SCHÉMA (supabase/migrations/001_initial_schema.sql)
 - profiles: id, email, full_name, phone, company_ico, company_dic, role ('customer','admin').
