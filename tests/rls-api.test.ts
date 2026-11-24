@@ -547,4 +547,42 @@ describe("Data API neschovává citlivé sloupce jen na klientovi", () => {
       },
     ]);
   });
+
+  it("oem_cache vidí jen service role", async () => {
+    const marker = "NAKUP-OEM-CACHE-123.45";
+    const cacheRow = {
+      oem: "C6OEMCACHE1",
+      source: "allegro",
+      payload: [{ marker, price: { amount: 123.45, currency: "PLN" } }],
+      fetched_at: new Date().toISOString(),
+      ttl: "01:00:00",
+    };
+    const anonCache = await rest("oem_cache?select=*", config.anonKey, config.anonKey);
+    expect(anonCache.status).toBeGreaterThanOrEqual(400);
+    expect(Array.isArray(anonCache.body)).toBe(false);
+    expect(anonCache.text).not.toContain(marker);
+
+    const customerCache = await rest("oem_cache?select=*", customerToken, config.anonKey);
+    expect(customerCache.status).toBeGreaterThanOrEqual(400);
+    expect(Array.isArray(customerCache.body)).toBe(false);
+    expect(customerCache.text).not.toContain(marker);
+
+    const customerWrite = await rest("oem_cache", customerToken, config.anonKey, "POST", cacheRow);
+    expect(customerWrite.status).toBeGreaterThanOrEqual(400);
+    expect(Array.isArray(customerWrite.body)).toBe(false);
+
+    const written = await rest("oem_cache", config.serviceKey, config.serviceKey, "POST", cacheRow);
+    expect([200, 201], written.text).toContain(written.status);
+    const serviceRead = await rest(
+      "oem_cache?oem=eq.C6OEMCACHE1&source=eq.allegro&select=payload",
+      config.serviceKey,
+      config.serviceKey,
+    );
+    expect(serviceRead.status).toBe(200);
+    expect(serviceRead.text).toContain(marker);
+    const hiddenCache = await rest("oem_cache?select=*", customerToken, config.anonKey);
+    expect(hiddenCache.status).toBeGreaterThanOrEqual(400);
+    expect(hiddenCache.text).not.toContain(marker);
+    await rest("oem_cache?oem=eq.C6OEMCACHE1&source=eq.allegro", config.serviceKey, config.serviceKey, "DELETE");
+  });
 });
