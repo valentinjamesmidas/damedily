@@ -16,6 +16,12 @@ const PLACEMENTS: { value: "" | Placement; label: string }[] = [
   { value: "van_tires", label: "Pneu (Dodávky)" },
 ];
 
+function sourceLabel(value: AdminItem["source"]): string {
+  if (value === "cizi_zdroj") return "Cizí zdroj";
+  if (value === "dropship") return "Dropship";
+  return "Vlastní sklad";
+}
+
 function placementLabel(value: Placement): string {
   if (value === "action_offer") return "Akční nabídka";
   if (value === "permanent_offer") return "Stálá nabídka";
@@ -114,7 +120,7 @@ export function InventoryManager({ items, loadError }: { items: AdminItem[]; loa
                     OEM {item.oemNumber} · {placementLabel(item.placementType)} · {item.stockQuantity} ks
                   </p>
                   <p className="mt-1 text-sm">
-                    Nákup {formatCzk(item.costPriceCzk)} · Prodej {formatCzk(item.sellingPriceCzk)}
+                    Nákup {formatCzk(item.costPriceCzk)} · Prodej {formatCzk(item.sellingPriceCzk)} · {sourceLabel(item.source)}
                   </p>
                 </div>
                 <div className="flex gap-2">

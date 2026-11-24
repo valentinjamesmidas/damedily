@@ -165,6 +165,7 @@ describe("vlastní sklad", () => {
           images: [],
           part_condition: "novy",
           origin_kind: "druhovyroba",
+          source: "vlastni_sklad",
         },
       ]);
     };
@@ -173,11 +174,37 @@ describe("vlastní sklad", () => {
       fetchImpl,
     )(query());
     expect(seen[0]).toContain("oem_compact=eq.1K0615301");
+    expect(seen[0]).toContain("source=eq.vlastni_sklad");
     expect(seen[0]).toContain("selling_price_czk");
     expect(seen[0]).not.toContain("cost_price_czk");
     expect(rows[0]?.sellingPriceCzk).toBe(1000);
     expect(JSON.stringify(rows)).not.toContain("800");
     expect(rows[0]?.partCondition).toBe("novy");
     expect(JSON.stringify(seen)).not.toContain("service-secret");
+  });
+
+  it("dropship do hledání vlastního skladu nepatří", async () => {
+    const fetchImpl: typeof fetch = async () =>
+      Response.json([
+        {
+          id: "item-drop",
+          title_cs: "Díl",
+          oem_number: "1K0615301",
+          part_category: "Brzdy",
+          vehicle_compatibility: [],
+          selling_price_czk: 1000,
+          stock_quantity: 1,
+          images: [],
+          part_condition: "novy",
+          origin_kind: "oem",
+          condition_detail: "Nový.",
+          source: "dropship",
+        },
+      ]);
+    const rows = await createSupabaseStockLoader(
+      { SUPABASE_URL: "http://127.0.0.1:54321", SUPABASE_SERVICE_ROLE_KEY: "service-secret" },
+      fetchImpl,
+    )(query());
+    expect(rows).toEqual([]);
   });
 });

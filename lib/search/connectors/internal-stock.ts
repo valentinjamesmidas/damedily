@@ -96,10 +96,11 @@ export function createSupabaseStockLoader(
     const params = new URLSearchParams();
     params.set(
       "select",
-      "id,title_cs,oem_number,part_category,vehicle_compatibility,selling_price_czk,stock_quantity,images,part_condition,origin_kind,condition_detail",
+      "id,title_cs,oem_number,part_category,vehicle_compatibility,selling_price_czk,stock_quantity,images,part_condition,origin_kind,condition_detail,source",
     );
     params.set("stock_quantity", "gt.0");
     params.set("part_condition", "not.is.null");
+    params.set("source", "eq.vlastni_sklad");
 
     const compact = compactOem(query.oemNumber);
     if (query.oemNumber) {
@@ -137,6 +138,7 @@ function parseStockRow(value: unknown): StockRow | null {
   const selling = typeof row.selling_price_czk === "number" ? row.selling_price_czk : Number(row.selling_price_czk);
   if (typeof row.id !== "string" || typeof row.title_cs !== "string" || typeof row.oem_number !== "string") return null;
   if (typeof row.part_category !== "string" || !Number.isFinite(selling)) return null;
+  if (row.source !== "vlastni_sklad") return null;
   const stock = typeof row.stock_quantity === "number" ? row.stock_quantity : Number(row.stock_quantity);
   return {
     id: row.id,
