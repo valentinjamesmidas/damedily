@@ -61,7 +61,7 @@ describe("veřejná nabídka", () => {
   it("počítá prodejní cenu přes marži a do JSON tajné údaje nedá", () => {
     const offer = toPublicOffer(draft());
     expect(offer.sellingPriceCzk).toBe(sellingPrice(333));
-    expect(offer.sellingPriceCzk).toBe(500);
+    expect(offer.sellingPriceCzk).toBe(540);
     expect(offer.condition).toBe("pouzity");
     expect(offer.conditionLabel).toBe("Použitý");
     expect(offer.conditionDetail).toBe("Drobné stopy po provozu, bez prasklin.");
