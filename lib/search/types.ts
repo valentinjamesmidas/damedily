@@ -21,6 +21,11 @@ export type SupplierListing = {
   conditionDetail: string | null;
   originKind: "oem" | "druhovyroba" | null;
   price: number;
+  /**
+   * true jen u vlastního skladu: `price` je uložená prodejní cena v Kč.
+   * Marže se z ní znovu nepočítá a nákupní cena v nabídce není.
+   */
+  priceIsSelling?: boolean;
   currency: string;
   imageUrls: string[];
   supplierLeadTime: string | null;

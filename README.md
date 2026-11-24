@@ -69,13 +69,13 @@ Klient je v `lib/xai-grok.ts` a smí běžet jen na serveru. Volá `POST /v1/cha
 
 `POST /api/vision` čte JPEG nebo PNG a vrátí jen OEM a typ dílu, bez jistoty modelu. `POST /api/admin/vision` je totéž pro skladovou kartu (název, OEM, kategorie) a bez role admin se model nevolá. Při chybě nebo HTTP 402 stránka neslibuje výsledek a nechá ruční zadání.
 
-Veřejná nabídka z `lib/white-label.ts` má prodejní cenu z `sellingPrice`, stav, údaj použitý/nový a dodací lhůtu. U externího zdroje je to `4–5 pracovních dní` a označení skladu netvrdí, že díl už je v ČR. Vlastní sklad uvádí, že je na provozovně. V typu ani v JSON nejsou `cost_price`, `source_platform`, `internal_project_tag` ani AI skóre.
+Veřejná nabídka z `lib/white-label.ts` má u cizího zdroje prodejní cenu z `sellingPrice`, stav, údaj použitý/nový a dodací lhůtu. U externího zdroje je to `4–5 pracovních dní` a označení skladu netvrdí, že díl už je v ČR. Vlastní sklad uvádí, že je na provozovně, a do streamu dává uloženou `selling_price_czk`. Nákupní cena se u něj znovu nenásobí marží a do veřejné nabídky se nedostane. V typu ani v JSON nejsou `cost_price`, `source_platform`, `internal_project_tag` ani AI skóre.
 
 ## Hledání
 
 `POST /api/search/stream` bere JSON `{ "oemNumber", "vehicle", "category", "rawQuery", "queryType" }`. Aspoň jedno z prvních čtyř polí musí být vyplněné. Odpověď je `text/event-stream`: nejdřív `first_found` a nejlevnější plně vyhovující veřejná nabídka (rozpočet `SEARCH_FIRST_BUDGET_MS`, výchozí 1,5&nbsp;s, i z cache nebo vlastního skladu), potom `searching_alternatives` a až dvě další nabídky, nakonec `completed`.
 
-Veřejná nabídka je pořád jen `PublicOffer`. Cizí cena se přepočte denním kurzem ČNB (`https://api.cnb.cz/cnbapi/exrates/daily`) a při jeho výpadku kurzem ECB. Prodejní cena jde přes `sellingPrice`. Fotka z cizí adresy je ve výstupu jen jako `/api/media/…`; proxy ji pošle dál beze změny a při blokaci zdroje nic neopakuje.
+Veřejná nabídka je pořád jen `PublicOffer`. Cizí cena se přepočte denním kurzem ČNB (`https://api.cnb.cz/cnbapi/exrates/daily`) a při jeho výpadku kurzem ECB. Prodejní cena cizí nabídky jde přes `sellingPrice`. Vlastní sklad bere cenu, která je uložená u položky. Fotka z cizí adresy je ve výstupu jen jako `/api/media/…`. Proxy ji stáhne s `redirect: manual`, u každého skoku (nejvýš tři) pustí jen `http`/`https` na portu 80 nebo 443 a před požadavkem ověří všechny A i AAAA adresy. Soukromé a vyhrazené rozsahy, jiný typ než `image/*` a tělo nad 5&nbsp;MiB odmítne. Bajty úspěšné fotky se nemění a při blokaci zdroje se požadavek neopakuje.
 
 Každý zdroj má vypínač `SUPPLIER_*`. Vypnutý zdroj se nevolá. Zapnutý zdroj, který narazí na captchu, přihlášení nebo HTTP 401/403/429, vrátí prázdný seznam a důvod zůstane v serverovém logu. Dotaz zakázaný `robots.txt` se neposílá. Mezi požadavky na stejnou doménu je mezera `SEARCH_MIN_INTERVAL_MS` (výchozí 8&nbsp;s) a odpověď se na `SEARCH_CACHE_TTL_MS` (výchozí 6&nbsp;h) drží v paměti procesu.
 

@@ -64,13 +64,14 @@ export async function prepareListings(input: {
   for (const listing of input.listings) {
     const id = `${listing.sourcePlatform}:${listing.externalId}`;
     if (seen.has(id)) continue;
-    const costPriceCzk =
+    const amountCzk =
       listing.currency.toUpperCase() === "CZK"
         ? convertToCzk(listing.price, "CZK", { source: "cnb", validFor: "", czkPerUnit: { CZK: 1 } })
         : input.rates
           ? convertToCzk(listing.price, listing.currency, input.rates)
           : null;
-    if (costPriceCzk === null) continue;
+    if (amountCzk === null) continue;
+    if (listing.priceIsSelling && listing.currency.toUpperCase() !== "CZK") continue;
 
     const translated = await input.translate(listing);
     const condition = listing.condition ?? translated?.condition ?? null;
@@ -98,7 +99,8 @@ export async function prepareListings(input: {
         conditionDetail,
         originKind,
         sourcePlatform: listing.sourcePlatform,
-        costPriceCzk,
+        costPriceCzk: amountCzk,
+        sellingPriceCzk: listing.priceIsSelling ? amountCzk : undefined,
         internalProjectTag: listing.internalProjectTag ?? input.projectTag,
         images,
       });

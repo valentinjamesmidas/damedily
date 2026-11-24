@@ -133,7 +133,7 @@ describe("vlastní sklad", () => {
     oemNumber: "1K0 615 301",
     partCategory: "Brzdy",
     vehicleCompatibility: [{ model: "Octavia" }],
-    costPriceCzk: 200,
+    sellingPriceCzk: 1000,
     stockQuantity: 2,
     images: ["/sklad/kotouc.jpg"],
     internalProjectTag: "damedily",
@@ -149,7 +149,7 @@ describe("vlastní sklad", () => {
     expect(matchStock(rows, query({ oemNumber: null, category: "Brzdy", vehicle: "Octavia" }))).toHaveLength(1);
   });
 
-  it("ze Supabase vezme jen řádky dotazu a nákupní cena zůstane na serveru", async () => {
+  it("ze Supabase vezme prodejní cenu a nákupní cenu vůbec nečte", async () => {
     const seen: string[] = [];
     const fetchImpl: typeof fetch = async (input) => {
       seen.push(String(input));
@@ -160,7 +160,8 @@ describe("vlastní sklad", () => {
           oem_number: "1K0615301",
           part_category: "Brzdy",
           vehicle_compatibility: [],
-          cost_price_czk: "200.00",
+          cost_price_czk: "800.00",
+          selling_price_czk: "1000.00",
           stock_quantity: 2,
           images: [],
           internal_project_tag: "damedily",
@@ -174,7 +175,10 @@ describe("vlastní sklad", () => {
       fetchImpl,
     )(query());
     expect(seen[0]).toContain("oem_compact=eq.1K0615301");
-    expect(rows[0]?.costPriceCzk).toBe(200);
+    expect(seen[0]).toContain("selling_price_czk");
+    expect(seen[0]).not.toContain("cost_price_czk");
+    expect(rows[0]?.sellingPriceCzk).toBe(1000);
+    expect(JSON.stringify(rows)).not.toContain("800");
     expect(rows[0]?.partCondition).toBe("novy");
     expect(JSON.stringify(seen)).not.toContain("service-secret");
   });

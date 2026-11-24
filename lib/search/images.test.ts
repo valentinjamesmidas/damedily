@@ -17,18 +17,20 @@ describe("proxy fotek", () => {
     const path = store.publish("https://cdn.example/a.jpg");
     const token = path?.split("/").pop() ?? "";
     let calls = 0;
+    const dns = async () => ["93.184.216.34"];
     const ok = await proxyImage(token, store, async (_input, init) => {
       calls += 1;
+      expect(init?.redirect).toBe("manual");
       expect(new Headers(init?.headers).get("user-agent")).toBe(MEDIA_USER_AGENT);
       return new Response(bytes, { status: 200, headers: { "content-type": "image/jpeg" } });
-    });
+    }, dns);
     expect(Array.from(new Uint8Array(await ok.arrayBuffer()))).toEqual([1, 2, 3, 255]);
     expect(ok.headers.get("content-type")).toBe("image/jpeg");
 
     const blocked = await proxyImage(token, store, async () => {
       calls += 1;
       return new Response("no", { status: 403, headers: { "content-type": "text/html" } });
-    });
+    }, dns);
     expect(blocked.status).toBe(502);
     expect(calls).toBe(2);
   });

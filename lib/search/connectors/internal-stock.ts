@@ -8,7 +8,7 @@ export type StockRow = {
   oemNumber: string;
   partCategory: string;
   vehicleCompatibility: unknown;
-  costPriceCzk: number;
+  sellingPriceCzk: number;
   stockQuantity: number;
   images: string[];
   internalProjectTag: ProjectTag;
@@ -33,7 +33,7 @@ export function matchStock(rows: readonly StockRow[], query: SupplierSearchQuery
 
 export function stockToListing(row: StockRow): SupplierListing | null {
   if (!row.partCondition || row.stockQuantity <= 0) return null;
-  if (!Number.isFinite(row.costPriceCzk) || row.costPriceCzk < 0) return null;
+  if (!Number.isFinite(row.sellingPriceCzk) || row.sellingPriceCzk < 0) return null;
   return {
     sourcePlatform: "internal_stock",
     externalId: row.id,
@@ -44,7 +44,8 @@ export function stockToListing(row: StockRow): SupplierListing | null {
     condition: row.partCondition,
     conditionDetail: row.conditionDetail,
     originKind: row.originKind,
-    price: row.costPriceCzk,
+    price: row.sellingPriceCzk,
+    priceIsSelling: true,
     currency: "CZK",
     imageUrls: row.images,
     supplierLeadTime: null,
@@ -98,7 +99,7 @@ export function createSupabaseStockLoader(
     const params = new URLSearchParams();
     params.set(
       "select",
-      "id,title_cs,oem_number,part_category,vehicle_compatibility,cost_price_czk,stock_quantity,images,internal_project_tag,part_condition,origin_kind,condition_detail",
+      "id,title_cs,oem_number,part_category,vehicle_compatibility,selling_price_czk,stock_quantity,images,internal_project_tag,part_condition,origin_kind,condition_detail",
     );
     params.set("stock_quantity", "gt.0");
     params.set("part_condition", "not.is.null");
@@ -137,9 +138,9 @@ function parseStockRow(value: unknown): StockRow | null {
   const condition = row.part_condition === "pouzity" || row.part_condition === "novy" ? row.part_condition : null;
   const origin = row.origin_kind === "oem" || row.origin_kind === "druhovyroba" ? row.origin_kind : null;
   const tag = row.internal_project_tag === "ekokladno" || row.internal_project_tag === "damedily" ? row.internal_project_tag : null;
-  const cost = typeof row.cost_price_czk === "number" ? row.cost_price_czk : Number(row.cost_price_czk);
+  const selling = typeof row.selling_price_czk === "number" ? row.selling_price_czk : Number(row.selling_price_czk);
   if (typeof row.id !== "string" || typeof row.title_cs !== "string" || typeof row.oem_number !== "string") return null;
-  if (typeof row.part_category !== "string" || !tag || !Number.isFinite(cost)) return null;
+  if (typeof row.part_category !== "string" || !tag || !Number.isFinite(selling)) return null;
   const stock = typeof row.stock_quantity === "number" ? row.stock_quantity : Number(row.stock_quantity);
   return {
     id: row.id,
@@ -147,7 +148,7 @@ function parseStockRow(value: unknown): StockRow | null {
     oemNumber: row.oem_number,
     partCategory: row.part_category,
     vehicleCompatibility: row.vehicle_compatibility ?? [],
-    costPriceCzk: cost,
+    sellingPriceCzk: selling,
     stockQuantity: Number.isFinite(stock) ? stock : 0,
     images: Array.isArray(row.images) ? row.images.filter((image): image is string => typeof image === "string") : [],
     internalProjectTag: tag,

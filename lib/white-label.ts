@@ -83,6 +83,8 @@ export type OfferDraft = {
   originKind?: Exclude<PartOriginKind, "neuvedeno"> | null;
   sourcePlatform: SourcePlatform;
   costPriceCzk: number;
+  /** Uložená prodejní cena vlastního skladu. Když je vyplněná, marže se znovu nepočítá. */
+  sellingPriceCzk?: number;
   internalProjectTag: ProjectTag;
   aiScore?: number | null;
   images?: readonly string[];
@@ -157,9 +159,20 @@ function assertNoFalseLocationClaim(value: string, label: string): void {
   }
 }
 
+function publishedSellingPrice(draft: OfferDraft): number {
+  if (draft.sellingPriceCzk != null) {
+    if (!Number.isFinite(draft.sellingPriceCzk) || draft.sellingPriceCzk < 0) {
+      throw new TypeError("Prodejní cena musí být nezáporné konečné číslo.");
+    }
+    return Math.round(draft.sellingPriceCzk * 100) / 100;
+  }
+  return sellingPrice(draft.costPriceCzk);
+}
+
 /**
  * Z interního návrhu udělá veřejnou nabídku.
- * Prodejní cenu počítá výhradně přes sellingPrice (marže ×1,5 nahoru na desetikoruny).
+ * Cizí nabídka dostane cenu přes sellingPrice (marže ×1,5 nahoru na desetikoruny).
+ * Vlastní sklad předá uloženou prodejní cenu a nákupní cena do nabídky nejde.
  */
 export function toPublicOffer(draft: OfferDraft): PublicOffer {
   if (!SOURCE_PLATFORMS.includes(draft.sourcePlatform)) {
@@ -189,7 +202,7 @@ export function toPublicOffer(draft: OfferDraft): PublicOffer {
     originLabel:
       originKind === "oem" ? "OEM" : originKind === "druhovyroba" ? "Druhovýroba" : "V podkladu neuvedeno",
     warehouseLabel,
-    sellingPriceCzk: sellingPrice(draft.costPriceCzk),
+    sellingPriceCzk: publishedSellingPrice(draft),
     deliveryLeadTime,
     images: publicImages(draft.images),
   };
