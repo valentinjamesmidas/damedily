@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(36);
+select plan(62);
 
 select has_table('public', 'oem_cache', 'oem_cache existuje');
 select has_column('public', 'oem_cache', 'oem', 'oem_cache má oem');
@@ -146,6 +146,103 @@ select throws_ok(
   '23505',
   'duplicate key value violates unique constraint "oem_cache_pkey"',
   'dvojice oem a source je jen jednou'
+);
+select has_column('public', 'oem_cache', 'in_flight_until', 'oem_cache má lease');
+select has_index('public', 'oem_cache', 'oem_cache_fetched_at_idx', 'fetched_at má index');
+select throws_ok(
+  $$insert into public.oem_cache (oem, source, payload, ttl)
+    values ('BIGPAYLOAD1', 'allegro', to_jsonb(repeat('x', 70000)), interval '1 hour')$$,
+  '23514',
+  'new row for relation "oem_cache" violates check constraint "oem_cache_payload_size"',
+  'příliš velký payload se neuloží'
+);
+select has_table('public', 'source_health', 'source_health existuje');
+select has_column('public', 'source_health', 'block_count', 'source_health má počet');
+select has_column('public', 'source_health', 'window_start', 'source_health má začátek okna');
+select has_column('public', 'source_health', 'tripped_at', 'source_health má vypnutí');
+select has_column('public', 'source_health', 'reset_at', 'source_health má ruční reset');
+select ok(
+  (
+    select c.relrowsecurity and c.relforcerowsecurity
+    from pg_class as c
+    join pg_namespace as n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relname = 'source_health'
+  ),
+  'source_health má vynucené RLS'
+);
+select ok(not has_table_privilege('anon', 'public.source_health', 'SELECT'), 'anon source_health nečte');
+select ok(not has_table_privilege('authenticated', 'public.source_health', 'INSERT'), 'zákazník source_health nezapisuje');
+select ok(has_table_privilege('service_role', 'public.source_health', 'SELECT'), 'service_role source_health čte');
+select ok(has_table_privilege('service_role', 'public.source_health', 'UPDATE'), 'service_role source_health mění');
+select is(
+  (select block_count from public.record_source_block('allegro', interval '1 hour', 3)),
+  1,
+  'první blokace má počet 1'
+);
+select is(
+  (select tripped from public.record_source_block('allegro', interval '1 hour', 3)),
+  false,
+  'dvě blokace ještě nevypnou'
+);
+select is(
+  (select tripped from public.record_source_block('allegro', interval '1 hour', 3)),
+  true,
+  'třetí blokace zdroj vypne'
+);
+select is(
+  (select block_count from public.record_source_block('allegro', interval '1 hour', 3)),
+  3,
+  'po vypnutí se počet dál nezvedá'
+);
+select lives_ok(
+  $$select public.record_source_block('stale', interval '1 hour', 3)$$,
+  'service_role založí počítadlo pro okno'
+);
+update public.source_health
+set window_start = now() - interval '2 hours', block_count = 2
+where source = 'stale';
+select is(
+  (select block_count from public.record_source_block('stale', interval '1 hour', 3)),
+  1,
+  'po vypršení okna se počet vrací na 1'
+);
+select lives_ok(
+  $$select public.reset_source_health('allegro')$$,
+  'service_role zdroj ručně resetuje'
+);
+select is(
+  (select tripped_at is null from public.source_health where source = 'allegro'),
+  true,
+  'po resetu zdroj není vypnutý'
+);
+select lives_ok(
+  $$insert into public.oem_cache (oem, source, payload, fetched_at, ttl)
+    values ('EXPIRED1', 'allegro', '[]'::jsonb, now() - interval '2 hours', interval '1 hour')$$,
+  'service_role vloží prošlý řádek'
+);
+select is(
+  public.purge_expired_oem_cache() > 0,
+  true,
+  'úklid smaže prošlý řádek'
+);
+select is(
+  public.try_lease_oem_cache('LEASE1', 'allegro', now() + interval '1 minute'),
+  true,
+  'volný klíč dostane lease'
+);
+select is(
+  public.try_lease_oem_cache('LEASE1', 'allegro', now() + interval '1 minute'),
+  false,
+  'držený lease druhý worker nedostane'
+);
+reset role;
+
+set local role anon;
+select throws_ok(
+  $$select * from public.record_source_block('allegro', interval '1 hour', 3)$$,
+  '42501',
+  'permission denied for function record_source_block',
+  'anon blokaci nezapíše'
 );
 reset role;
 
