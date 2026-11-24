@@ -1,15 +1,12 @@
 import { sellingPrice } from "@/lib/pricing";
-import { TAG_REQUIRED_MESSAGE } from "@/lib/copy";
 
 export const PLACEMENTS = ["action_offer", "permanent_offer", "van_tires"] as const;
-export const PROJECT_TAG_VALUES = ["ekokladno", "damedily"] as const;
 export const CONDITIONS = ["pouzity", "novy"] as const;
 export const ORIGINS = ["oem", "druhovyroba"] as const;
 export const SEASONS = ["letni", "zimni", "celorocni"] as const;
 export const DIAMETERS = ["R15C", "R16C", "R17C"] as const;
 
 export type Placement = (typeof PLACEMENTS)[number];
-export type ProjectTagValue = (typeof PROJECT_TAG_VALUES)[number];
 export type Season = (typeof SEASONS)[number];
 export type TireDiameter = (typeof DIAMETERS)[number];
 
@@ -33,7 +30,6 @@ export type InventoryInput = {
   sellingPriceCzk: number;
   stockQuantity: number;
   placementType: Placement;
-  internalProjectTag: ProjectTagValue;
   images: string[];
   vehicleText: string;
   tireSpecs: TireSpecsInput | null;
@@ -87,9 +83,6 @@ function readTire(value: unknown): TireSpecsInput | null | "invalid" {
 
 export function validateInventoryInput(input: unknown): { ok: true; value: InventoryInput } | { ok: false; message: string } {
   if (!isRecord(input)) return { ok: false, message: "Formulář je neúplný." };
-  if (input.internalProjectTag !== "ekokladno" && input.internalProjectTag !== "damedily") {
-    return { ok: false, message: TAG_REQUIRED_MESSAGE };
-  }
 
   const titleCs = text(input.titleCs, 160);
   const oemNumber = text(input.oemNumber, 40);
@@ -149,7 +142,6 @@ export function validateInventoryInput(input: unknown): { ok: true; value: Inven
       sellingPriceCzk: explicitSelling ?? sellingPrice(costPriceCzk),
       stockQuantity,
       placementType: input.placementType,
-      internalProjectTag: input.internalProjectTag,
       images,
       vehicleText,
       tireSpecs: input.placementType === "van_tires" ? tireSpecs : null,

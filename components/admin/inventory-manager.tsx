@@ -7,13 +7,7 @@ import { Button } from "@/components/ui/button";
 import { deleteInventoryItem, saveInventoryItem } from "@/app/admin/actions";
 import { formatCzk } from "@/lib/copy";
 import type { AdminItem } from "@/lib/inventory/admin-item";
-import type { InventoryInput, Placement, ProjectTagValue } from "@/lib/inventory/item-input";
-
-const TAGS: { value: "" | ProjectTagValue; label: string }[] = [
-  { value: "", label: "Všechny projekty" },
-  { value: "ekokladno", label: "EKOKLADNO" },
-  { value: "damedily", label: "DAMEDILY" },
-];
+import type { InventoryInput, Placement } from "@/lib/inventory/item-input";
 
 const PLACEMENTS: { value: "" | Placement; label: string }[] = [
   { value: "", label: "Všechna umístění" },
@@ -31,7 +25,6 @@ function placementLabel(value: Placement): string {
 export function InventoryManager({ items, loadError }: { items: AdminItem[]; loadError: boolean }) {
   const router = useRouter();
   const [editing, setEditing] = useState<AdminItem | null>(null);
-  const [tag, setTag] = useState<"" | ProjectTagValue>("");
   const [placement, setPlacement] = useState<"" | Placement>("");
   const [query, setQuery] = useState("");
   const [message, setMessage] = useState<string | null>(null);
@@ -39,12 +32,11 @@ export function InventoryManager({ items, loadError }: { items: AdminItem[]; loa
   const visible = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("cs-CZ");
     return items.filter((item) => {
-      if (tag && item.internalProjectTag !== tag) return false;
       if (placement && item.placementType !== placement) return false;
       if (!needle) return true;
       return `${item.titleCs} ${item.oemNumber}`.toLocaleLowerCase("cs-CZ").includes(needle);
     });
-  }, [items, placement, query, tag]);
+  }, [items, placement, query]);
 
   async function submit(value: InventoryInput, files: File[]) {
     const form = new FormData();
@@ -72,7 +64,7 @@ export function InventoryManager({ items, loadError }: { items: AdminItem[]; loa
         <p className="font-display text-sm font-semibold uppercase tracking-[0.18em] text-accent">Jen role admin</p>
         <h1 className="mt-2 font-display text-4xl font-semibold tracking-tight">Sklad</h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">
-          Nákupní cena a projekt jsou vidět jen tady. Na webu pro zákazníky nejsou.
+          Nákupní cena je vidět jen tady. Na webu pro zákazníky není.
         </p>
       </div>
 
@@ -84,19 +76,6 @@ export function InventoryManager({ items, loadError }: { items: AdminItem[]; loa
       {message ? <p className="text-sm font-semibold">{message}</p> : null}
 
       <div className="space-y-3">
-        <div className="flex flex-wrap gap-2">
-          {TAGS.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              aria-pressed={tag === item.value}
-              onClick={() => setTag(item.value)}
-              className={`rounded-full px-3 py-1.5 text-sm font-semibold ${tag === item.value ? "bg-primary text-white" : "bg-card text-primary ring-1 ring-line"}`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
         <div className="flex flex-wrap gap-2">
           {PLACEMENTS.map((item) => (
             <button
@@ -135,8 +114,7 @@ export function InventoryManager({ items, loadError }: { items: AdminItem[]; loa
                     OEM {item.oemNumber} · {placementLabel(item.placementType)} · {item.stockQuantity} ks
                   </p>
                   <p className="mt-1 text-sm">
-                    Nákup {formatCzk(item.costPriceCzk)} · Prodej {formatCzk(item.sellingPriceCzk)} ·{" "}
-                    {item.internalProjectTag === "ekokladno" ? "EKOKLADNO" : "DAMEDILY"}
+                    Nákup {formatCzk(item.costPriceCzk)} · Prodej {formatCzk(item.sellingPriceCzk)}
                   </p>
                 </div>
                 <div className="flex gap-2">

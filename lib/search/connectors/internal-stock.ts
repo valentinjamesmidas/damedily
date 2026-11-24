@@ -1,6 +1,5 @@
 import { compactOem, oemEqual } from "@/lib/search/oem";
 import type { ConnectorResult, SupplierConnector, SupplierListing, SupplierSearchQuery } from "@/lib/search/types";
-import type { ProjectTag } from "@/lib/white-label";
 
 export type StockRow = {
   id: string;
@@ -11,7 +10,6 @@ export type StockRow = {
   sellingPriceCzk: number;
   stockQuantity: number;
   images: string[];
-  internalProjectTag: ProjectTag;
   partCondition: "pouzity" | "novy" | null;
   originKind: "oem" | "druhovyroba" | null;
   conditionDetail: string | null;
@@ -50,7 +48,6 @@ export function stockToListing(row: StockRow): SupplierListing | null {
     imageUrls: row.images,
     supplierLeadTime: null,
     category: row.partCategory,
-    internalProjectTag: row.internalProjectTag,
   };
 }
 
@@ -99,7 +96,7 @@ export function createSupabaseStockLoader(
     const params = new URLSearchParams();
     params.set(
       "select",
-      "id,title_cs,oem_number,part_category,vehicle_compatibility,selling_price_czk,stock_quantity,images,internal_project_tag,part_condition,origin_kind,condition_detail",
+      "id,title_cs,oem_number,part_category,vehicle_compatibility,selling_price_czk,stock_quantity,images,part_condition,origin_kind,condition_detail",
     );
     params.set("stock_quantity", "gt.0");
     params.set("part_condition", "not.is.null");
@@ -137,10 +134,9 @@ function parseStockRow(value: unknown): StockRow | null {
   const row = value as Record<string, unknown>;
   const condition = row.part_condition === "pouzity" || row.part_condition === "novy" ? row.part_condition : null;
   const origin = row.origin_kind === "oem" || row.origin_kind === "druhovyroba" ? row.origin_kind : null;
-  const tag = row.internal_project_tag === "ekokladno" || row.internal_project_tag === "damedily" ? row.internal_project_tag : null;
   const selling = typeof row.selling_price_czk === "number" ? row.selling_price_czk : Number(row.selling_price_czk);
   if (typeof row.id !== "string" || typeof row.title_cs !== "string" || typeof row.oem_number !== "string") return null;
-  if (typeof row.part_category !== "string" || !tag || !Number.isFinite(selling)) return null;
+  if (typeof row.part_category !== "string" || !Number.isFinite(selling)) return null;
   const stock = typeof row.stock_quantity === "number" ? row.stock_quantity : Number(row.stock_quantity);
   return {
     id: row.id,
@@ -151,7 +147,6 @@ function parseStockRow(value: unknown): StockRow | null {
     sellingPriceCzk: selling,
     stockQuantity: Number.isFinite(stock) ? stock : 0,
     images: Array.isArray(row.images) ? row.images.filter((image): image is string => typeof image === "string") : [],
-    internalProjectTag: tag,
     partCondition: condition,
     originKind: origin,
     conditionDetail: typeof row.condition_detail === "string" && row.condition_detail.trim() ? row.condition_detail.trim() : null,

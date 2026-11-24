@@ -7,7 +7,7 @@ import { isFullMatch, rankAlternativeIds, selectAlternatives, selectFirst, type 
 import type { SearchSessionRecorder } from "@/lib/search/sessions";
 import type { ConnectorResult, SearchLog, SupplierConnector, SupplierListing, SupplierSearchQuery } from "@/lib/search/types";
 import type { XaiClient } from "@/lib/xai-grok";
-import { serializePublicOffer, type ProjectTag, type PublicOffer } from "@/lib/white-label";
+import { serializePublicOffer, type PublicOffer } from "@/lib/white-label";
 
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream; charset=utf-8",
@@ -21,7 +21,6 @@ export type SearchDeps = {
   translate: (listing: SupplierListing) => Promise<ListingNormalization | null>;
   images: ImageLinkStore;
   sessions: SearchSessionRecorder;
-  projectTag: ProjectTag;
   firstBudgetMs: number;
   restBudgetMs: number;
   rank?: (first: PreparedOffer, candidates: readonly PreparedOffer[]) => Promise<string[] | null>;
@@ -152,7 +151,6 @@ async function runSearch(
       rates,
       translate: deps.translate,
       images: deps.images,
-      projectTag: deps.projectTag,
     });
 
   let first = selectFirst(await prepare(settled.flatMap((result) => result.listings)), query);

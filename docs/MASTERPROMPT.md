@@ -1,6 +1,8 @@
 # DámeDíly.cz – MASTERPROMPT (zadání od Valentina, 11. 11. 2026)
 Trvalá pravidla produktového ředitele Alana. Platí spolu s dodatkem „Právní mantinely“ na konci, který má přednost.
 
+> Změna v1.1: EKOKLADNO, provize a `internal_project_tag` se nepoužívají. Prodává jen DámeDíly s.r.o. Původ skladové položky je sloupec `source` (`vlastni_sklad`, `cizi_zdroj`, `dropship`). Minimum 2 000 Kč je součet zboží včetně DPH, bez dopravy a služeb. Objednávku zakládá jen admin. Zákazník nemění `payment_status` ani e-mail v `profiles`. Body níže, které mluví o tagu nebo o CHECK na celkové částce, platí jen jako historie zadání.
+
 # ROLE A CÍL PROJEKTU
 Principal Full-Stack Architect a Lead AI Engineer. Úkol: vybudovat produkční e-commerce a agregační platformu DámeDíly.cz (původně prototyp na dilobot.lovable.app).
 Platforma kombinuje:

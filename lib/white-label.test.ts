@@ -48,7 +48,6 @@ function draft(overrides: Partial<OfferDraft> = {}): OfferDraft {
     originKind: "oem",
     sourcePlatform: "ovoko",
     costPriceCzk: 333,
-    internalProjectTag: "damedily",
     aiScore: 0.87,
     ...overrides,
   };

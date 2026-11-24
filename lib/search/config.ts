@@ -1,8 +1,7 @@
-import { SOURCE_PLATFORMS, type ProjectTag, type SourcePlatform } from "@/lib/white-label";
+import { SOURCE_PLATFORMS, type SourcePlatform } from "@/lib/white-label";
 
 export type SearchConfig = {
   enabled: Record<SourcePlatform, boolean>;
-  projectTag: ProjectTag;
   firstBudgetMs: number;
   restBudgetMs: number;
   cacheTtlMs: number;
@@ -35,18 +34,12 @@ function positive(env: Record<string, string | undefined>, name: string, fallbac
 }
 
 export function readSearchConfig(env: Record<string, string | undefined> = process.env): SearchConfig {
-  const tag = env.SEARCH_PROJECT_TAG?.trim() || "damedily";
-  if (tag !== "damedily" && tag !== "ekokladno") {
-    throw new TypeError("SEARCH_PROJECT_TAG musí být damedily nebo ekokladno.");
-  }
-
   const enabled = Object.fromEntries(
     SOURCE_PLATFORMS.map((source) => [source, flag(env, FLAGS[source])]),
   ) as Record<SourcePlatform, boolean>;
 
   return {
     enabled,
-    projectTag: tag,
     firstBudgetMs: positive(env, "SEARCH_FIRST_BUDGET_MS", 1_500),
     restBudgetMs: positive(env, "SEARCH_REST_BUDGET_MS", 8_000),
     cacheTtlMs: positive(env, "SEARCH_CACHE_TTL_MS", 6 * 60 * 60 * 1000),

@@ -33,7 +33,6 @@ function rowFrom(input: InventoryInput, images: string[]) {
     selling_price_czk: input.sellingPriceCzk,
     stock_quantity: input.stockQuantity,
     placement_type: input.placementType,
-    internal_project_tag: input.internalProjectTag,
     images,
     part_condition: input.partCondition,
     origin_kind: input.originKind,

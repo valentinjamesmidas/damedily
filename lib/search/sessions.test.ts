@@ -27,7 +27,6 @@ describe("relace hledání", () => {
       originKind: "oem",
       sourcePlatform: "ovoko",
       costPriceCzk: 100,
-      internalProjectTag: "damedily",
       aiScore: 0.4,
     } satisfies OfferDraft);
     expect(JSON.stringify(publicSessionResults([offer]))).not.toMatch(/ovoko|cost|aiScore/i);

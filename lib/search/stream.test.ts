@@ -56,7 +56,6 @@ function deps(overrides: Partial<SearchDeps> = {}): SearchDeps {
     translate: async () => null,
     images: new ImageLinkStore(),
     sessions: createMemorySessionRecorder(),
-    projectTag: "damedily",
     firstBudgetMs: 1_000,
     restBudgetMs: 1_000,
     rank: async () => null,
@@ -165,7 +164,6 @@ describe("SSE hledání", () => {
               sourcePlatform: "internal_stock",
               externalId: "stock",
               price: 800,
-              internalProjectTag: "damedily",
             }),
           ]),
           connector(

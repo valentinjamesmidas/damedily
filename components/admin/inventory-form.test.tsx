@@ -4,7 +4,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { TAG_REQUIRED_MESSAGE } from "@/lib/copy";
 import { InventoryForm } from "./inventory-form";
 
 afterEach(() => cleanup());
@@ -20,25 +19,25 @@ async function fillRequired(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("formulář skladu", () => {
-  it("bez projektu tag neuloží", async () => {
+  it("bez názvu položku neuloží", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
     render(<InventoryForm onSubmit={onSubmit} />);
     await user.click(screen.getByRole("button", { name: "Uložit položku" }));
-    expect(screen.getByRole("alert").textContent).toBe(TAG_REQUIRED_MESSAGE);
+    expect(screen.getByRole("alert").textContent).toBe("Vyplňte název.");
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it("s tagem DAMEDILY předvyplní prodejní cenu a uloží", async () => {
+  it("předvyplní prodejní cenu a uloží bez projektového tagu", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn().mockResolvedValue({ ok: true });
     render(<InventoryForm onSubmit={onSubmit} />);
     await fillRequired(user);
     expect(screen.getByLabelText("Prodejní cena (Kč)")).toHaveProperty("value", "300");
-    await user.click(screen.getByLabelText("DAMEDILY"));
+    expect(screen.queryByText("EKOKLADNO")).toBeNull();
     await user.click(screen.getByRole("button", { name: "Uložit položku" }));
     expect(onSubmit).toHaveBeenCalledTimes(1);
-    expect(onSubmit.mock.calls[0]?.[0].internalProjectTag).toBe("damedily");
     expect(onSubmit.mock.calls[0]?.[0].sellingPriceCzk).toBe(300);
+    expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty("internalProjectTag");
   });
 });

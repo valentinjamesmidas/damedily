@@ -10,7 +10,6 @@ import {
   validateInventoryInput,
   type InventoryInput,
   type Placement,
-  type ProjectTagValue,
 } from "@/lib/inventory/item-input";
 import type { ActionResult } from "@/lib/inventory/action-result";
 import { sellingPrice } from "@/lib/pricing";
@@ -29,7 +28,6 @@ type FormState = {
   sellingTouched: boolean;
   stockQuantity: string;
   placementType: "" | Placement;
-  internalProjectTag: "" | ProjectTagValue;
   vehicleText: string;
   images: string[];
   tireWidth: string;
@@ -52,7 +50,6 @@ function emptyState(): FormState {
     sellingTouched: false,
     stockQuantity: "1",
     placementType: "",
-    internalProjectTag: "",
     vehicleText: "",
     images: [],
     tireWidth: "",
@@ -76,7 +73,6 @@ function fromItem(item: AdminItem): FormState {
     sellingTouched: true,
     stockQuantity: String(item.stockQuantity),
     placementType: item.placementType,
-    internalProjectTag: item.internalProjectTag,
     vehicleText: item.vehicleText,
     images: item.images,
     tireWidth: item.tireSpecs ? String(item.tireSpecs.width) : "",
@@ -185,7 +181,6 @@ export function InventoryForm({
       sellingPriceCzk: state.sellingPriceCzk === "" ? null : state.sellingPriceCzk,
       stockQuantity: state.stockQuantity,
       placementType: state.placementType,
-      internalProjectTag: state.internalProjectTag,
       images: state.images,
       vehicleText: state.vehicleText,
       tireSpecs:
@@ -365,30 +360,6 @@ export function InventoryForm({
           </label>
         </div>
       ) : null}
-
-      <fieldset>
-        <legend className="text-sm font-semibold">Projekt</legend>
-        <div className="mt-2 flex flex-wrap gap-4 text-sm">
-          <label className="inline-flex items-center gap-2">
-            <input
-              type="radio"
-              name="projekt"
-              checked={state.internalProjectTag === "ekokladno"}
-              onChange={() => patch({ internalProjectTag: "ekokladno" })}
-            />
-            EKOKLADNO
-          </label>
-          <label className="inline-flex items-center gap-2">
-            <input
-              type="radio"
-              name="projekt"
-              checked={state.internalProjectTag === "damedily"}
-              onChange={() => patch({ internalProjectTag: "damedily" })}
-            />
-            DAMEDILY
-          </label>
-        </div>
-      </fieldset>
 
       <label className="block text-sm font-semibold">
         Vozidla

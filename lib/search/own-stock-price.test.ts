@@ -63,7 +63,6 @@ describe("prodejní cena vlastního skladu", () => {
         translate: async () => null,
         images: new ImageLinkStore(),
         sessions: createMemorySessionRecorder(),
-        projectTag: "damedily",
         firstBudgetMs: 1_000,
         restBudgetMs: 1_000,
         rank: async () => null,

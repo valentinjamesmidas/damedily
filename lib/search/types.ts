@@ -1,4 +1,4 @@
-import type { ProjectTag, SourcePlatform } from "@/lib/white-label";
+import type { SourcePlatform } from "@/lib/white-label";
 
 export type SearchQueryType = "chat" | "catalog" | "photo";
 
@@ -30,7 +30,6 @@ export type SupplierListing = {
   imageUrls: string[];
   supplierLeadTime: string | null;
   category: string | null;
-  internalProjectTag?: ProjectTag;
 };
 
 export type ConnectorOutcome = "ok" | "empty" | "blocked" | "skipped" | "error";
