@@ -10,6 +10,7 @@ import {
   validateInventoryInput,
   type InventoryInput,
   type Placement,
+  type StockSource,
 } from "@/lib/inventory/item-input";
 import type { ActionResult } from "@/lib/inventory/action-result";
 import { sellingPrice } from "@/lib/pricing";
@@ -28,6 +29,7 @@ type FormState = {
   sellingTouched: boolean;
   stockQuantity: string;
   placementType: "" | Placement;
+  source: "" | StockSource;
   vehicleText: string;
   images: string[];
   tireWidth: string;
@@ -50,6 +52,7 @@ function emptyState(): FormState {
     sellingTouched: false,
     stockQuantity: "1",
     placementType: "",
+    source: "vlastni_sklad",
     vehicleText: "",
     images: [],
     tireWidth: "",
@@ -73,6 +76,7 @@ function fromItem(item: AdminItem): FormState {
     sellingTouched: true,
     stockQuantity: String(item.stockQuantity),
     placementType: item.placementType,
+    source: item.source,
     vehicleText: item.vehicleText,
     images: item.images,
     tireWidth: item.tireSpecs ? String(item.tireSpecs.width) : "",
@@ -181,6 +185,7 @@ export function InventoryForm({
       sellingPriceCzk: state.sellingPriceCzk === "" ? null : state.sellingPriceCzk,
       stockQuantity: state.stockQuantity,
       placementType: state.placementType,
+      source: state.source,
       images: state.images,
       vehicleText: state.vehicleText,
       tireSpecs:
@@ -303,6 +308,15 @@ export function InventoryForm({
       >
         Přepočítat z nákupní ceny
       </Button>
+
+      <label className="block text-sm font-semibold">
+        Původ skladu
+        <select className={fieldClass} value={state.source} onChange={(event) => patch({ source: event.target.value as FormState["source"] })}>
+          <option value="vlastni_sklad">Vlastní sklad</option>
+          <option value="cizi_zdroj">Cizí zdroj</option>
+          <option value="dropship">Dropship</option>
+        </select>
+      </label>
 
       <fieldset>
         <legend className="text-sm font-semibold">Umístění</legend>

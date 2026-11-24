@@ -70,7 +70,8 @@ export async function prepareListings(input: {
           ? convertToCzk(listing.price, listing.currency, input.rates)
           : null;
     if (amountCzk === null) continue;
-    if (listing.priceIsSelling && listing.currency.toUpperCase() !== "CZK") continue;
+    const ownSelling = listing.priceIsSelling === true && listing.sourcePlatform === "internal_stock";
+    if (ownSelling && listing.currency.toUpperCase() !== "CZK") continue;
 
     const translated = await input.translate(listing);
     const condition = listing.condition ?? translated?.condition ?? null;
@@ -99,7 +100,7 @@ export async function prepareListings(input: {
         originKind,
         sourcePlatform: listing.sourcePlatform,
         costPriceCzk: amountCzk,
-        sellingPriceCzk: listing.priceIsSelling ? amountCzk : undefined,
+        sellingPriceCzk: ownSelling ? amountCzk : undefined,
         images,
       });
       seen.add(id);

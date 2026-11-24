@@ -13,12 +13,18 @@ const base = {
   sellingPriceCzk: null,
   stockQuantity: 2,
   placementType: "action_offer",
+  source: "vlastni_sklad",
   images: [],
   vehicleText: "",
   tireSpecs: null,
 };
 
 describe("validace skladové položky", () => {
+  it("bez původu skladu neprojde", () => {
+    const result = validateInventoryInput({ ...base, source: "" });
+    expect(result).toEqual({ ok: false, message: "Vyberte původ skladu." });
+  });
+
   it("bez názvu neprojde", () => {
     const result = validateInventoryInput({ ...base, titleCs: "" });
     expect(result).toEqual({ ok: false, message: "Vyplňte název." });
@@ -26,7 +32,7 @@ describe("validace skladové položky", () => {
 
   it("prázdnou prodejní cenu doplní z nákupní a ruční přepis nechá", () => {
     const filled = validateInventoryInput(base);
-    expect(filled.ok && filled.value.sellingPriceCzk).toBe(300);
+    expect(filled.ok && filled.value.sellingPriceCzk).toBe(320);
     const override = validateInventoryInput({ ...base, sellingPriceCzk: 450 });
     expect(override.ok && override.value.sellingPriceCzk).toBe(450);
   });

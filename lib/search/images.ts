@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { lookup } from "node:dns/promises";
+import http from "node:http";
+import https from "node:https";
 
 type StoredImage = { url: string; exp: number };
 
@@ -39,6 +41,10 @@ function ipv4Blocked(parts: [number, number, number, number]): boolean {
     [ipv4Bits(169, 254, 0, 0), 16],
     [ipv4Bits(0, 0, 0, 0), 8],
     [ipv4Bits(100, 64, 0, 0), 10],
+    [ipv4Bits(192, 0, 0, 0), 24],
+    [ipv4Bits(198, 18, 0, 0), 15],
+    [ipv4Bits(224, 0, 0, 0), 4],
+    [ipv4Bits(240, 0, 0, 0), 4],
   ];
   return ranges.some(([base, bits]) => {
     const mask = (0xffffffff << (32 - bits)) >>> 0;
@@ -72,12 +78,30 @@ function expandIpv6(input: string): number[] | null {
   return numbers;
 }
 
+function ipv4FromWords(hi: number, lo: number): [number, number, number, number] {
+  return [(hi >> 8) & 255, hi & 255, (lo >> 8) & 255, lo & 255];
+}
+
 function mappedIpv4(groups: number[]): [number, number, number, number] | null {
   const prefix = groups.slice(0, 5).every((group) => group === 0) && groups[5] === 0xffff;
   if (!prefix) return null;
-  const hi = groups[6] ?? 0;
-  const lo = groups[7] ?? 0;
-  return [(hi >> 8) & 255, hi & 255, (lo >> 8) & 255, lo & 255];
+  return ipv4FromWords(groups[6] ?? 0, groups[7] ?? 0);
+}
+
+function compatibleIpv4(groups: number[]): [number, number, number, number] | null {
+  if (!groups.slice(0, 6).every((group) => group === 0)) return null;
+  return ipv4FromWords(groups[6] ?? 0, groups[7] ?? 0);
+}
+
+function nat64Ipv4(groups: number[]): [number, number, number, number] | null {
+  const prefix = groups[0] === 0x64 && groups[1] === 0xff9b && groups.slice(2, 6).every((group) => group === 0);
+  if (!prefix) return null;
+  return ipv4FromWords(groups[6] ?? 0, groups[7] ?? 0);
+}
+
+function sixToFourIpv4(groups: number[]): [number, number, number, number] | null {
+  if (groups[0] !== 0x2002) return null;
+  return ipv4FromWords(groups[1] ?? 0, groups[2] ?? 0);
 }
 
 /** Soukromé, link-local, CGNAT a loopback adresy, včetně IPv4 schovaného v ::ffff:. */
@@ -87,8 +111,9 @@ export function isBlockedAddress(value: string): boolean {
   if (v4) return ipv4Blocked(v4);
   const groups = expandIpv6(bare);
   if (!groups) return false;
-  const mapped = mappedIpv4(groups);
-  if (mapped) return ipv4Blocked(mapped);
+  if (groups.every((group) => group === 0)) return true;
+  const embedded = mappedIpv4(groups) ?? compatibleIpv4(groups) ?? nat64Ipv4(groups) ?? sixToFourIpv4(groups);
+  if (embedded) return ipv4Blocked(embedded);
   if (groups.every((group, index) => group === (index === 7 ? 1 : 0))) return true;
   if ((groups[0]! & 0xfe00) === 0xfc00) return true;
   if ((groups[0]! & 0xffc0) === 0xfe80) return true;
@@ -118,7 +143,10 @@ async function lookupAll(hostname: string): Promise<readonly string[]> {
   return records.map((record) => record.address);
 }
 
-async function approvedImageUrl(value: string, resolveDns: DnsLookup): Promise<URL | null> {
+async function approvedImageUrl(
+  value: string,
+  resolveDns: DnsLookup,
+): Promise<{ url: URL; pinnedAddress: string; family: number } | null> {
   let url: URL;
   try {
     url = new URL(value);
@@ -137,16 +165,107 @@ async function approvedImageUrl(value: string, resolveDns: DnsLookup): Promise<U
   } catch {
     return null;
   }
-  if (addresses.length === 0 || addresses.some((address) => isLocalName(address) || isBlockedAddress(address))) {
+  const pinnedAddress = addresses[0];
+  if (!pinnedAddress || addresses.some((address) => isLocalName(address) || isBlockedAddress(address))) {
     return null;
   }
-  return url;
+  return { url, pinnedAddress, family: pinnedAddress.includes(":") ? 6 : 4 };
 }
+
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/avif", "image/gif"]);
 
 function imageContentType(header: string | null): string | null {
   if (!header) return null;
-  const type = header.trim();
-  return type.toLowerCase().startsWith("image/") ? type : null;
+  const mime = header.split(";")[0]?.trim().toLowerCase() ?? "";
+  return ALLOWED_IMAGE_TYPES.has(mime) ? mime : null;
+}
+
+type LookupCallback = (err: NodeJS.ErrnoException | null, address: string | { address: string; family: number }[], family?: number) => void;
+
+/** Lookup, který ignoruje pozdější DNS a vrací už ověřenou adresu. */
+export function lookupPinned(address: string, family: number) {
+  return (_hostname: string, options: unknown, callback?: LookupCallback) => {
+    const done = typeof options === "function" ? (options as LookupCallback) : callback;
+    if (!done) return;
+    const all = typeof options === "object" && options !== null && "all" in options && (options as { all?: boolean }).all === true;
+    if (all) {
+      done(null, [{ address, family }]);
+      return;
+    }
+    done(null, address, family);
+  };
+}
+
+export type ImageTransport = (input: {
+  url: URL;
+  pinnedAddress: string;
+  family: number;
+  headers: Record<string, string>;
+  signal: AbortSignal;
+}) => Promise<Response>;
+
+function canPinDns(): boolean {
+  return typeof process !== "undefined" && Boolean(process.versions?.node);
+}
+
+/**
+ * Node umí připnout socket na ověřenou IP a nechat Host i SNI na jméně.
+ * Cloudflare Workers `fetch` to neumí: DNS si řeší runtime znovu a vlastní lookup není.
+ * Tam se fotka nestáhne (502). Alternativa je nechat proxy jen na Node serveru.
+ */
+export function nodePinnedTransport(input: {
+  url: URL;
+  pinnedAddress: string;
+  family: number;
+  headers: Record<string, string>;
+  signal: AbortSignal;
+}): Promise<Response> {
+  if (!canPinDns()) return Promise.resolve(new Response(null, { status: 502 }));
+  const lib = input.url.protocol === "https:" ? https : http;
+  return new Promise((resolve) => {
+    const req = lib.request(
+      {
+        protocol: input.url.protocol,
+        hostname: input.url.hostname,
+        port: input.url.port === "" ? undefined : Number(input.url.port),
+        path: `${input.url.pathname}${input.url.search}`,
+        method: "GET",
+        headers: input.headers,
+        servername: input.url.hostname,
+        lookup: lookupPinned(input.pinnedAddress, input.family),
+        signal: input.signal,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        let total = 0;
+        let rejected = false;
+        res.on("data", (chunk: Buffer) => {
+          total += chunk.length;
+          if (total > MAX_IMAGE_BYTES) {
+            rejected = true;
+            req.destroy();
+            resolve(new Response(null, { status: 502 }));
+            return;
+          }
+          chunks.push(chunk);
+        });
+        res.on("end", () => {
+          if (rejected) return;
+          const body = Buffer.concat(chunks);
+          const headers = new Headers();
+          for (const [key, value] of Object.entries(res.headers)) {
+            if (typeof value === "string") headers.set(key, value);
+            else if (Array.isArray(value) && value.length > 0) headers.set(key, value.join(", "));
+          }
+          const bytes = new ArrayBuffer(body.byteLength);
+          new Uint8Array(bytes).set(body);
+          resolve(new Response(bytes, { status: res.statusCode ?? 502, headers }));
+        });
+      },
+    );
+    req.on("error", () => resolve(new Response(null, { status: 502 })));
+    req.end();
+  });
 }
 
 async function readLimited(response: Response, maxBytes: number): Promise<Uint8Array | null> {
@@ -185,6 +304,9 @@ async function readLimited(response: Response, maxBytes: number): Promise<Uint8A
 /**
  * Veřejná cesta fotky neobsahuje adresu zdroje.
  * Samotné bajty se při stažení nemění.
+ *
+ * TODO(workers): Map v paměti procesu na Cloudflare Workers nepřežije izolát.
+ * Odkaz má žít v KV nebo v podepsaném tokenu.
  */
 export class ImageLinkStore {
   private readonly links = new Map<string, StoredImage>();
@@ -229,11 +351,13 @@ export const MEDIA_USER_AGENT = "DamedilySearch/0.1 (+https://damedily.cz; image
 export async function proxyImage(
   token: string,
   store: ImageLinkStore,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl?: typeof fetch,
   resolveDns: DnsLookup = lookupAll,
+  transport: ImageTransport = nodePinnedTransport,
 ): Promise<Response> {
   const initial = store.resolve(token);
   if (!initial) return new Response(null, { status: 404 });
+  const headers = { "User-Agent": MEDIA_USER_AGENT, Accept: "image/avif,image/webp,image/jpeg,image/png,image/gif" };
 
   let current = initial;
   for (let hop = 1; hop <= MAX_IMAGE_HOPS; hop += 1) {
@@ -242,11 +366,10 @@ export async function proxyImage(
 
     let upstream: Response;
     try {
-      upstream = await fetchImpl(target, {
-        redirect: "manual",
-        headers: { "User-Agent": MEDIA_USER_AGENT, Accept: "image/avif,image/webp,image/*,*/*;q=0.8" },
-        signal: AbortSignal.timeout(8_000),
-      });
+      const signal = AbortSignal.timeout(8_000);
+      upstream = fetchImpl
+        ? await fetchImpl(target.url, { redirect: "manual", headers, signal })
+        : await transport({ ...target, headers, signal });
     } catch {
       return new Response(null, { status: 502 });
     }
@@ -255,7 +378,7 @@ export async function proxyImage(
       const location = upstream.headers.get("location");
       if (!location || hop === MAX_IMAGE_HOPS) return new Response(null, { status: 502 });
       try {
-        current = new URL(location, target).href;
+        current = new URL(location, target.url).href;
       } catch {
         return new Response(null, { status: 502 });
       }
@@ -274,6 +397,8 @@ export async function proxyImage(
         "Content-Type": type,
         "Cache-Control": "private, max-age=300",
         "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; sandbox",
+        "Content-Disposition": "inline",
       },
     });
   }

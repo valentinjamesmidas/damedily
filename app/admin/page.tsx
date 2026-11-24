@@ -21,7 +21,7 @@ export default async function AdminPage() {
   const { data, error } = await access.supabase
     .from("inventory_items")
     .select(
-      "id,title_cs,oem_number,part_category,vehicle_compatibility,tire_specs,cost_price_czk,selling_price_czk,stock_quantity,placement_type,images,part_condition,origin_kind,condition_detail",
+      "id,title_cs,oem_number,part_category,vehicle_compatibility,tire_specs,cost_price_czk,selling_price_czk,stock_quantity,placement_type,source,images,part_condition,origin_kind,condition_detail",
     )
     .order("created_at", { ascending: false });
 

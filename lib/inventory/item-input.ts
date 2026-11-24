@@ -1,12 +1,14 @@
 import { sellingPrice } from "@/lib/pricing";
 
 export const PLACEMENTS = ["action_offer", "permanent_offer", "van_tires"] as const;
+export const STOCK_SOURCES = ["vlastni_sklad", "cizi_zdroj", "dropship"] as const;
 export const CONDITIONS = ["pouzity", "novy"] as const;
 export const ORIGINS = ["oem", "druhovyroba"] as const;
 export const SEASONS = ["letni", "zimni", "celorocni"] as const;
 export const DIAMETERS = ["R15C", "R16C", "R17C"] as const;
 
 export type Placement = (typeof PLACEMENTS)[number];
+export type StockSource = (typeof STOCK_SOURCES)[number];
 export type Season = (typeof SEASONS)[number];
 export type TireDiameter = (typeof DIAMETERS)[number];
 
@@ -30,6 +32,7 @@ export type InventoryInput = {
   sellingPriceCzk: number;
   stockQuantity: number;
   placementType: Placement;
+  source: StockSource;
   images: string[];
   vehicleText: string;
   tireSpecs: TireSpecsInput | null;
@@ -102,6 +105,9 @@ export function validateInventoryInput(input: unknown): { ok: true; value: Inven
   if (input.placementType !== "action_offer" && input.placementType !== "permanent_offer" && input.placementType !== "van_tires") {
     return { ok: false, message: "Vyberte umístění." };
   }
+  if (input.source !== "vlastni_sklad" && input.source !== "cizi_zdroj" && input.source !== "dropship") {
+    return { ok: false, message: "Vyberte původ skladu." };
+  }
   if (input.originKind != null && input.originKind !== "oem" && input.originKind !== "druhovyroba") {
     return { ok: false, message: "Původ dílu je OEM, druhovýroba, nebo ho nechte prázdný." };
   }
@@ -142,6 +148,7 @@ export function validateInventoryInput(input: unknown): { ok: true; value: Inven
       sellingPriceCzk: explicitSelling ?? sellingPrice(costPriceCzk),
       stockQuantity,
       placementType: input.placementType,
+      source: input.source,
       images,
       vehicleText,
       tireSpecs: input.placementType === "van_tires" ? tireSpecs : null,

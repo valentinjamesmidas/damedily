@@ -27,11 +27,11 @@ describe("převod měn", () => {
 
     const eur = convertToCzk(10, "EUR", table);
     expect(eur).toBe(243.8);
-    expect(sellingPrice(eur ?? 0)).toBe(370);
+    expect(sellingPrice(eur ?? 0)).toBe(400);
 
     const pln = convertToCzk(100, "PLN", table);
     expect(pln).toBe(553.5);
-    expect(sellingPrice(pln ?? 0)).toBe(840);
+    expect(sellingPrice(pln ?? 0)).toBe(890);
 
     const huf = convertToCzk(100, "HUF", table);
     expect(huf).toBe(6.68);

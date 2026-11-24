@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(102);
+select plan(115);
 
 -- ---------------------------------------------------------------------------
 -- Katalog
@@ -767,6 +767,87 @@ select ok(
   ),
   'stávající sklad je vlastní sklad DámeDíly s.r.o.'
 );
+
+select has_table('archive', 'inventory_project_tag', 'archiv tagu skladu je mimo public');
+select has_table('archive', 'order_item_project_tag', 'archiv tagu položek je mimo public');
+
+select lives_ok(
+  $$insert into public.orders (id, order_number, user_id, total_amount_czk)
+    values ('15151515-1515-4151-8151-151515151515', 'DD-PAIR', '11111111-1111-4111-8111-111111111111', 0)$$,
+  'admin založí objednávku pro dva kusy zboží'
+);
+select lives_ok(
+  $$insert into public.order_items (
+      id, order_id, item_title_cs, oem_number, source_platform, cost_price_czk, selling_price_czk, quantity, line_kind
+    ) values
+      ('16161616-1616-4161-8161-161616161616', '15151515-1515-4151-8151-151515151515', 'První', 'OEM-A', 'internal_stock', 400, 1000, 1, 'zbozi'),
+      ('17171717-1717-4171-8171-171717171717', '15151515-1515-4151-8151-151515151515', 'Druhý', 'OEM-B', 'internal_stock', 400, 1000, 1, 'zbozi')$$,
+  'dvakrát 1 000 Kč zboží projde'
+);
+select is(
+  (select total_amount_czk from public.orders where id = '15151515-1515-4151-8151-151515151515'),
+  2000.00::numeric,
+  'celková částka je součet řádků'
+);
+select throws_ok(
+  $$update public.order_items set selling_price_czk = 500 where id = '16161616-1616-4161-8161-161616161616'$$,
+  '23514',
+  'Součet zboží včetně DPH musí být alespoň 2 000 Kč.',
+  'snížení řádku pod 2 000 Kč neprojde'
+);
+select throws_ok(
+  $$delete from public.order_items where id = '16161616-1616-4161-8161-161616161616'$$,
+  '23514',
+  'Součet zboží včetně DPH musí být alespoň 2 000 Kč.',
+  'smazání řádku pod 2 000 Kč neprojde'
+);
+select lives_ok(
+  $$delete from public.orders where id = '15151515-1515-4151-8151-151515151515'$$,
+  'smazání celé objednávky projde'
+);
+
+select lives_ok(
+  $$insert into public.orders (id, order_number, user_id, total_amount_czk)
+    values ('18181818-1818-4181-8181-181818181818', 'DD-EMPTY', '11111111-1111-4111-8111-111111111111', 0)$$,
+  'prázdná objednávka se vloží ještě před commitem'
+);
+select throws_ok(
+  $$set constraints orders_goods_deferred immediate$$,
+  '23514',
+  'Součet zboží včetně DPH musí být alespoň 2 000 Kč.',
+  'prázdná objednávka na konci transakce neprojde'
+);
+select lives_ok(
+  $$delete from public.orders where id = '18181818-1818-4181-8181-181818181818'$$,
+  'nedokončená prázdná objednávka se dá smazat'
+);
+
+select ok(
+  exists (
+    select 1
+    from pg_trigger
+    where tgname = 'auth_users_enforce_email'
+      and tgrelid = 'auth.users'::regclass
+      and not tgisinternal
+  ),
+  'auth.users má trigger proti změně přihlašovacího e-mailu'
+);
+select ok(
+  position(
+    'Změna přihlašovacího e-mailu je vypnutá.' in pg_get_functiondef('private.enforce_auth_user_email()'::regprocedure)
+  ) > 0
+  and position(
+    'supabase_auth_admin' in pg_get_functiondef('private.enforce_auth_user_email()'::regprocedure)
+  ) = 0,
+  'změnu e-mailu pustí jen postgres, supabase_admin, service_role nebo administrátor'
+);
+select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"22222222-2222-4222-8222-222222222222","role":"authenticated"}',
+  true
+);
+set local role authenticated;
 
 reset role;
 select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);

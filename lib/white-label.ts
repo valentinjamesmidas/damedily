@@ -166,7 +166,7 @@ function publishedSellingPrice(draft: OfferDraft): number {
 
 /**
  * Z interního návrhu udělá veřejnou nabídku.
- * Cizí nabídka dostane cenu přes sellingPrice (marže ×1,5 nahoru na desetikoruny).
+ * Cizí nabídka dostane cenu přes sellingPrice (pásma marže, nahoru na desetikoruny).
  * Vlastní sklad předá uloženou prodejní cenu a nákupní cena do nabídky nejde.
  */
 export function toPublicOffer(draft: OfferDraft): PublicOffer {

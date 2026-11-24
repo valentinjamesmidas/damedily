@@ -33,11 +33,12 @@ describe("formulář skladu", () => {
     const onSubmit = vi.fn().mockResolvedValue({ ok: true });
     render(<InventoryForm onSubmit={onSubmit} />);
     await fillRequired(user);
-    expect(screen.getByLabelText("Prodejní cena (Kč)")).toHaveProperty("value", "300");
+    expect(screen.getByLabelText("Prodejní cena (Kč)")).toHaveProperty("value", "320");
     expect(screen.queryByText("EKOKLADNO")).toBeNull();
     await user.click(screen.getByRole("button", { name: "Uložit položku" }));
     expect(onSubmit).toHaveBeenCalledTimes(1);
-    expect(onSubmit.mock.calls[0]?.[0].sellingPriceCzk).toBe(300);
+    expect(onSubmit.mock.calls[0]?.[0].sellingPriceCzk).toBe(320);
+    expect(onSubmit.mock.calls[0]?.[0].source).toBe("vlastni_sklad");
     expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty("internalProjectTag");
   });
 });

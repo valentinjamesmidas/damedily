@@ -41,6 +41,7 @@ describe("prodejní cena vlastního skladu", () => {
           part_condition: "pouzity",
           origin_kind: "oem",
           condition_detail: "Drobné stopy po provozu.",
+          source: "vlastni_sklad",
         },
       ]);
     };
