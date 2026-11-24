@@ -272,6 +272,19 @@ describe("Data API neschovává citlivé sloupce jen na klientovi", () => {
       order_number: `DD-API-${ORDER_ID.slice(0, 8)}`,
       user_id: CUSTOMER_ID,
       total_amount_czk: 2500,
+      order_items: [
+        {
+          id: ORDER_ITEM_ID,
+          item_title_cs: "Brzdový kotouč API",
+          oem_number: "OEM-API",
+          source_platform: "ovoko",
+          supplier_order_ref: `${SECRET_MARKER}-1`,
+          cost_price_czk: 80,
+          selling_price_czk: 2500,
+          quantity: 1,
+          line_kind: "zbozi",
+        },
+      ],
     });
     expect([200, 201], order.text).toContain(order.status);
 
@@ -279,41 +292,25 @@ describe("Data API neschovává citlivé sloupce jen na klientovi", () => {
       id: OTHER_ORDER_ID,
       order_number: `DD-API-${OTHER_ORDER_ID.slice(0, 8)}`,
       user_id: OTHER_ID,
-      total_amount_czk: 2500,
+      total_amount_czk: 2100,
+      order_items: [
+        {
+          id: OTHER_ORDER_ITEM_ID,
+          item_title_cs: "Jiná položka API",
+          oem_number: "OEM-OTHER",
+          source_platform: "autodoc",
+          supplier_order_ref: `${SECRET_MARKER}-2`,
+          cost_price_czk: 90,
+          selling_price_czk: 2100,
+          quantity: 1,
+          line_kind: "zbozi",
+        },
+      ],
     });
     expect([200, 201], otherOrder.text).toContain(otherOrder.status);
-
-    const orderItem = await rest("order_items", config.serviceKey, config.serviceKey, "POST", {
-      id: ORDER_ITEM_ID,
-      order_id: ORDER_ID,
-      item_title_cs: "Brzdový kotouč API",
-      oem_number: "OEM-API",
-      source_platform: "ovoko",
-      supplier_order_ref: `${SECRET_MARKER}-1`,
-      cost_price_czk: 80,
-      selling_price_czk: 2500,
-      quantity: 1,
-      line_kind: "zbozi",
-    });
-    expect([200, 201], orderItem.text).toContain(orderItem.status);
-
-    const otherItem = await rest("order_items", config.serviceKey, config.serviceKey, "POST", {
-      id: OTHER_ORDER_ITEM_ID,
-      order_id: OTHER_ORDER_ID,
-      item_title_cs: "Jiná položka API",
-      oem_number: "OEM-OTHER",
-      source_platform: "autodoc",
-      supplier_order_ref: `${SECRET_MARKER}-2`,
-      cost_price_czk: 90,
-      selling_price_czk: 2100,
-      quantity: 1,
-      line_kind: "zbozi",
-    });
-    expect([200, 201], otherItem.text).toContain(otherItem.status);
   });
 
   afterAll(async () => {
-    await rest(`order_items?id=in.(${ORDER_ITEM_ID},${OTHER_ORDER_ITEM_ID})`, config.serviceKey, config.serviceKey, "DELETE");
     await rest(`orders?id=in.(${ORDER_ID},${OTHER_ORDER_ID})`, config.serviceKey, config.serviceKey, "DELETE");
     await rest(`inventory_items?id=eq.${ITEM_ID}`, config.serviceKey, config.serviceKey, "DELETE");
     await request(`/auth/v1/admin/users/${CUSTOMER_ID}`, { method: "DELETE", key: config.serviceKey });
@@ -433,77 +430,94 @@ describe("Data API neschovává citlivé sloupce jen na klientovi", () => {
     expect(profileEmail.body).toEqual([{ email: customerEmail }]);
 
     const lowId = randomUUID();
-    const lowOrder = await rest("orders", config.serviceKey, config.serviceKey, "POST", {
+    const tooSmall = await rest("orders", config.serviceKey, config.serviceKey, "POST", {
       id: lowId,
       order_number: `DD-LOW-${lowId.slice(0, 8)}`,
       user_id: CUSTOMER_ID,
-      total_amount_czk: 100,
-    });
-    expect([200, 201], lowOrder.text).toContain(lowOrder.status);
-
-    const tooSmall = await rest("order_items", config.serviceKey, config.serviceKey, "POST", {
-      order_id: lowId,
-      item_title_cs: "Málo",
-      oem_number: "OEM-LOW",
-      source_platform: "internal_stock",
-      cost_price_czk: 100,
-      selling_price_czk: 1999,
-      quantity: 1,
-      line_kind: "zbozi",
+      total_amount_czk: 1999,
+      order_items: [
+        {
+          item_title_cs: "Málo",
+          oem_number: "OEM-LOW",
+          source_platform: "internal_stock",
+          cost_price_czk: 100,
+          selling_price_czk: 1999,
+          quantity: 1,
+          line_kind: "zbozi",
+        },
+      ],
     });
     expect(tooSmall.status).toBeGreaterThanOrEqual(400);
     expect(errorCode(tooSmall)).toBe("23514");
 
-    const shipping = await rest("order_items", config.serviceKey, config.serviceKey, "POST", [
-      {
-        order_id: lowId,
-        item_title_cs: "Zboží",
-        oem_number: "OEM-SHIP",
-        source_platform: "internal_stock",
-        cost_price_czk: 800,
-        selling_price_czk: 1500,
-        quantity: 1,
-        line_kind: "zbozi",
-      },
-      {
-        order_id: lowId,
-        item_title_cs: "Doprava",
-        oem_number: "DOPRAVA",
-        source_platform: "internal_stock",
-        cost_price_czk: 0,
-        selling_price_czk: 600,
-        quantity: 1,
-        line_kind: "doprava",
-      },
-    ]);
+    const shipId = randomUUID();
+    const shipping = await rest("orders", config.serviceKey, config.serviceKey, "POST", {
+      id: shipId,
+      order_number: `DD-SHIP-${shipId.slice(0, 8)}`,
+      user_id: CUSTOMER_ID,
+      total_amount_czk: 2100,
+      order_items: [
+        {
+          item_title_cs: "Zboží",
+          oem_number: "OEM-SHIP",
+          source_platform: "internal_stock",
+          cost_price_czk: 800,
+          selling_price_czk: 1500,
+          quantity: 1,
+          line_kind: "zbozi",
+        },
+        {
+          item_title_cs: "Doprava",
+          oem_number: "DOPRAVA",
+          source_platform: "internal_stock",
+          cost_price_czk: 0,
+          selling_price_czk: 600,
+          quantity: 1,
+          line_kind: "doprava",
+        },
+      ],
+    });
     expect(shipping.status).toBeGreaterThanOrEqual(400);
     expect(errorCode(shipping)).toBe("23514");
 
-    const enough = await rest("order_items", adminToken, config.anonKey, "POST", [
-      {
-        order_id: lowId,
-        item_title_cs: "Zboží",
-        oem_number: "OEM-OK",
-        source_platform: "internal_stock",
-        cost_price_czk: 1000,
-        selling_price_czk: 2000,
-        quantity: 1,
-        line_kind: "zbozi",
-      },
-      {
-        order_id: lowId,
-        item_title_cs: "Služba",
-        oem_number: "SLUZBA",
-        source_platform: "internal_stock",
-        cost_price_czk: 0,
-        selling_price_czk: 300,
-        quantity: 1,
-        line_kind: "sluzba",
-      },
-    ]);
+    const enough = await rest("orders", adminToken, config.anonKey, "POST", {
+      order_number: `DD-OK-${lowId.slice(0, 8)}`,
+      user_id: CUSTOMER_ID,
+      total_amount_czk: 0,
+      order_items: [
+        {
+          item_title_cs: "Zboží",
+          oem_number: "OEM-OK",
+          source_platform: "internal_stock",
+          cost_price_czk: 1000,
+          selling_price_czk: 2000,
+          quantity: 1,
+          line_kind: "zbozi",
+        },
+        {
+          item_title_cs: "Služba",
+          oem_number: "SLUZBA",
+          source_platform: "internal_stock",
+          cost_price_czk: 0,
+          selling_price_czk: 300,
+          quantity: 1,
+          line_kind: "sluzba",
+        },
+      ],
+    });
     expect([200, 201], enough.text).toContain(enough.status);
-    await rest(`order_items?order_id=eq.${lowId}`, config.serviceKey, config.serviceKey, "DELETE");
-    await rest(`orders?id=eq.${lowId}`, config.serviceKey, config.serviceKey, "DELETE");
+    const created = Array.isArray(enough.body) ? enough.body[0] : null;
+    const createdId =
+      created && typeof created === "object" && !Array.isArray(created) && typeof created.id === "string"
+        ? created.id
+        : null;
+    if (createdId) {
+      const stored = await rest(`orders?id=eq.${createdId}&select=total_amount_czk`, config.serviceKey, config.serviceKey);
+      expect(rowsOf(stored.body).map((row) => moneyRow(row, ["total_amount_czk"]))).toEqual([
+        { id: createdId, total_amount_czk: 2300 },
+      ]);
+      await rest(`orders?id=eq.${createdId}`, config.serviceKey, config.serviceKey, "DELETE");
+    }
 
     const escalate = await rest(`profiles?id=eq.${CUSTOMER_ID}`, customerToken, config.anonKey, "PATCH", {
       role: "admin",

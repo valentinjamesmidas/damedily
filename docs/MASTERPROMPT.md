@@ -20,8 +20,8 @@ Platforma kombinuje:
 1. WHITE-LABEL: zákazník na frontendu nevidí názvy zahraničních zdrojů a tržišť (Ovoko, B-Parts, Autodoc, Inter Cars, Auto Partner). Cizojazyčné názvy a popisy Grok překládá do přirozené profesionální češtiny. Externí prodejce maskovat interními sklady („Externí centrální sklad – Sektor A“, „Partner DámeDíly – Ověřený uzel“). Fotky z externích zdrojů přes image proxy. Dobu doručení 4–5 dní komunikovat jako benefit: „Důkladná 5bodová ruční kontrola naším technikem a příprava se zárukou“.
 2. ŽÁDNÉ VIDITELNÉ AI SKÓRE: AI hodnotí stav, kompatibilitu a dodavatele jen na pozadí. Zákazník vidí jen finální garantovaný produkt s pečetí „Ručně kontrolováno – Záruka DámeDíly.cz“.
 3. PROGRESIVNÍ VYHLEDÁVÁNÍ (1 hned + 2 na pozadí): první levný plně vyhovující díl zobrazit do 1–2 s, na pozadí (SSE / Supabase Realtime) dohledat další 2 alternativy (např. druhá použitá OEM a třetí nový z druhovýroby) a dostreamovat s animací „Právě jsme pro vás ověřili další alternativu...“.
-4. CENA A MINIMUM: AI vybírá nejlevnější kvalitní díl přesně podle specifikace. selling_price_czk = Math.ceil((cost_price_czk * 1.50) / 10) * 10. Zákazník vidí jen koncovou cenu v Kč. Minimální objednávka striktně 2 000 Kč; pod limitem hláška: „Minimální hodnota objednávky pro spuštění důkladné ruční kontroly a expedice se zárukou je 2 000 Kč. Doplňte košík o další díl nebo provozní příslušenství (chybí ještě X Kč).“ + upsell ze Stálé nabídky nebo Pneu.
-5. TAG PROJEKTU: každá skladová položka i položka objednávky má povinný internal_project_tag ENUM ('ekokladno','damedily'). Na klientském frontendu ani ve veřejném API nikdy viditelný; jen v Adminu (zobrazit a filtrovat).
+4. CENA A MINIMUM: AI vybírá nejlevnější kvalitní díl přesně podle specifikace. Prodejní cena jde podle pásem nákupu (whitepaper 3.2), ne plochou marží 50 %. Zákazník vidí jen koncovou cenu v Kč. Minimální objednávka striktně 2 000 Kč za zboží; pod limitem hláška: „Minimální hodnota objednávky pro spuštění důkladné ruční kontroly a expedice se zárukou je 2 000 Kč. Doplňte košík o další díl nebo provozní příslušenství (chybí ještě X Kč).“ + upsell ze Stálé nabídky nebo Pneu.
+5. ~~TAG PROJEKTU: každá skladová položka i položka objednávky má povinný internal_project_tag ENUM ('ekokladno','damedily'). Na klientském frontendu ani ve veřejném API nikdy viditelný; jen v Adminu (zobrazit a filtrovat).~~ Od v1.1 tag není. Původ skladu je `source`.
 
 # 3. DESIGN A DŮVĚRA
 Logo: ozubené kolo s oranžovou fajfkou. Barvy: #1E293B (primární tmavá), #FF5A1F (CTA, fajfka, aktivní prvky), pozadí #F8FAFC.
@@ -57,15 +57,15 @@ Supabase Auth (e-mail + heslo, Magic Link, Google). /ucet/objednavky: aktivní i
 4. Odesláno se záručním listem k vám (sledovací číslo)
 
 # 7. ADMIN (/admin, role admin)
-1. Skladový manažer: formulář (Název, OEM, Kategorie, Nákupní/Prodejní cena, Počet, Fotky – grok-vision předvyplní název a OEM). Umístění: [ ] Akční nabídka [ ] Stálá nabídka [ ] Pneu (Dodávky). Povinný přepínač [ EKOKLADNO ] / [ DAMEDILY ]. Filtr skladu i tržeb podle tagu jedním klikem.
+1. Skladový manažer: formulář (Název, OEM, Kategorie, Nákupní/Prodejní cena, Počet, Fotky – grok-vision předvyplní název a OEM). Umístění: [ ] Akční nabídka [ ] Stálá nabídka [ ] Pneu (Dodávky). ~~Povinný přepínač [ EKOKLADNO ] / [ DAMEDILY ]. Filtr skladu i tržeb podle tagu jedním klikem.~~ Místo tagu je původ skladu `vlastni_sklad` / `cizi_zdroj` / `dropship`.
 2. QC Hub: fronta automatických objednávek mířících na provozovnu; u každé skutečný dodavatel, nákupní cena, 50% marže, tag a tlačítko [Potvrdit ruční kontrolu & Expedovat klientovi].
 
 # 8. SCHÉMA (supabase/migrations/001_initial_schema.sql)
 - profiles: id, email, full_name, phone, company_ico, company_dic, role ('customer','admin').
-- inventory_items: id, title_cs, oem_number, part_category, vehicle_compatibility JSONB, tire_specs JSONB (width, profile, diameter, load_index, season), cost_price_czk, selling_price_czk, stock_quantity, placement_type ('action_offer','permanent_offer','van_tires'), internal_project_tag ('ekokladno'|'damedily') – RLS a API view tak, aby se sloupec nikdy nevrátil nepřihlášenému ani zákazníkovi; images text[], created_at.
+- inventory_items: id, title_cs, oem_number, part_category, vehicle_compatibility JSONB, tire_specs JSONB (width, profile, diameter, load_index, season), cost_price_czk, selling_price_czk, stock_quantity, placement_type ('action_offer','permanent_offer','van_tires'), ~~internal_project_tag ('ekokladno'|'damedily')~~ source ('vlastni_sklad'|'cizi_zdroj'|'dropship') – původ skladu se do veřejného view nevrací; images text[], created_at.
 - search_sessions: id, user_id, query_type ('chat','catalog','photo'), raw_query, resolved_oem, status ('first_found','searching_alternatives','completed'), results JSONB (1 okamžitý + 2 dobíhající).
-- orders: id, order_number, user_id, total_amount_czk CHECK (>= 2000), payment_intent_id, payment_status ('authorized_hold','captured','cancelled'), order_status ('ordered_to_facility','in_manual_inspection','shipped_with_warranty','delivered'), inspection_photos text[], inspector_notes, created_at.
-- order_items: id, order_id, item_title_cs, oem_number, source_platform (skryté klientovi: 'internal_stock','inter_cars','auto_partner','autodoc','ovoko','b_parts'), supplier_order_ref, internal_project_tag, cost_price_czk, selling_price_czk, quantity.
+- orders: id, order_number, user_id, total_amount_czk (součet řádků, ~~CHECK (>= 2000)~~ minimum je součet zboží), payment_intent_id, payment_status ('authorized_hold','captured','cancelled'), order_status ('ordered_to_facility','in_manual_inspection','shipped_with_warranty','delivered'), inspection_photos text[], inspector_notes, created_at.
+- order_items: id, order_id, item_title_cs, oem_number, source_platform (skryté klientovi: 'internal_stock','inter_cars','auto_partner','autodoc','ovoko','b_parts'), supplier_order_ref, ~~internal_project_tag,~~ cost_price_czk, selling_price_czk, quantity, line_kind ('zbozi'|'doprava'|'sluzba').
 
 # 9. POSTUP V CURSORU
 1. Struktura projektu, Tailwind s barvami #1E293B a #FF5A1F, schéma v Supabase včetně zabezpečení internal_project_tag.
@@ -85,7 +85,7 @@ Doplnil ELON, aby white-label obstál vůči českému a EU spotřebitelskému p
 5. Dílobot se na dotaz představí jako AI asistent (povinnost transparentnosti chatbotů podle AI Actu). Skrytí AI skóre je v pořádku.
 6. Stripe manual capture: autorizace na kartě obvykle vyprší zhruba po 7 dnech. Kontrolu a capture proto stihnout dřív, nebo včas obnovit autorizaci, a před ostrým provozem to ověřit.
 7. AutomatedProcurementAgent objednává jen v rámci limitů (cena, dodavatel, limit na objednávku). Pokud nákupní cena vzroste nad zaplacenou cenu nebo díl chybí, eskaluje na člověka. Ostré nákupy, ostré platby a nasazení do produkce jen po Valentinově ano.
-8. internal_project_tag, source_platform a cost_price_czk se nikdy nevrací do veřejného API. Ověřit to testy RLS a API.
+8. ~~internal_project_tag,~~ source_platform, source a cost_price_czk se nikdy nevrací do veřejného API. Ověřit to testy RLS a API.
 
 # ZMĚNA DODATKU (Valentin, 11. 11. 2026, výslovný souhlas v chatu s Alanem)
 Bod 4 se mění: kromě oficiálních API smí systém pro zobrazení reálných nabídek používat i scraping veřejných stránek tržišť a dodavatelů; právní riziko Valentin výslovně přijímá. Podmínky: nízká frekvence a cache, identifikovatelný User-Agent, žádné obcházení captchy, přihlášení, blokací ani technických ochran, žádné ořezávání ani odstraňování vodoznaků a copyrightu, scraper musí jít jedním přepínačem vypnout po zdrojích. Ostatní body dodatku platí beze změny (pravdivost, použitý/nový, dodací lhůta, AI transparentnost, limity nákupního agenta, skryté sloupce).

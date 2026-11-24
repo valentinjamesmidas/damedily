@@ -8,32 +8,80 @@
 -- ---------------------------------------------------------------------------
 
 alter table public.inventory_items
-  add column source text;
+  add column if not exists source text;
 
 update public.inventory_items
-set source = 'vlastni_sklad';
+set source = 'vlastni_sklad'
+where source is null;
 
 alter table public.inventory_items
   alter column source set default 'vlastni_sklad',
   alter column source set not null;
 
-alter table public.inventory_items
-  add constraint inventory_items_source_check
-  check (source in ('vlastni_sklad', 'cizi_zdroj', 'dropship'));
+do $$
+begin
+  alter table public.inventory_items
+    add constraint inventory_items_source_check
+    check (source in ('vlastni_sklad', 'cizi_zdroj', 'dropship'));
+exception
+  when duplicate_object then null;
+end $$;
 
 comment on column public.inventory_items.source is
   'Původ kusů: vlastni_sklad, cizi_zdroj nebo dropship. Jediný prodejce je DámeDíly s.r.o.';
+
+create schema if not exists archive;
+revoke all on schema archive from public, anon, authenticated;
+
+create table if not exists archive.inventory_project_tag (
+  item_id uuid not null,
+  internal_project_tag text not null,
+  archived_at timestamptz not null default now()
+);
+
+create table if not exists archive.order_item_project_tag (
+  item_id uuid not null,
+  internal_project_tag text not null,
+  archived_at timestamptz not null default now()
+);
+
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'inventory_items'
+      and column_name = 'internal_project_tag'
+  ) then
+    insert into archive.inventory_project_tag (item_id, internal_project_tag)
+    select id, internal_project_tag::text
+    from public.inventory_items;
+  end if;
+
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'order_items'
+      and column_name = 'internal_project_tag'
+  ) then
+    insert into archive.order_item_project_tag (item_id, internal_project_tag)
+    select id, internal_project_tag::text
+    from public.order_items;
+  end if;
+end $$;
 
 drop index if exists public.inventory_items_project_tag_idx;
 drop index if exists public.order_items_project_tag_idx;
 
 alter table public.inventory_items
-  drop column internal_project_tag;
+  drop column if exists internal_project_tag;
 
 alter table public.order_items
-  drop column internal_project_tag;
+  drop column if exists internal_project_tag;
 
-drop type public.project_tag;
+drop type if exists public.project_tag;
 
 comment on view public.public_inventory is
   'Veřejný sklad bez nákupní ceny, původu skladu a kompaktního OEM. security_invoker zůstává vypnuté.';
@@ -53,14 +101,19 @@ comment on view public.customer_order_items is
 -- ---------------------------------------------------------------------------
 
 alter table public.orders
-  drop constraint orders_total_amount_czk_min;
+  drop constraint if exists orders_total_amount_czk_min;
 
 alter table public.order_items
-  add column line_kind text not null default 'zbozi';
+  add column if not exists line_kind text not null default 'zbozi';
 
-alter table public.order_items
-  add constraint order_items_line_kind_check
-  check (line_kind in ('zbozi', 'doprava', 'sluzba'));
+do $$
+begin
+  alter table public.order_items
+    add constraint order_items_line_kind_check
+    check (line_kind in ('zbozi', 'doprava', 'sluzba'));
+exception
+  when duplicate_object then null;
+end $$;
 
 comment on column public.order_items.line_kind is
   'zbozi vstupuje do minima 2 000 Kč včetně DPH. doprava a sluzba ne (R23-A).';
@@ -78,21 +131,38 @@ declare
   goods numeric;
   items integer;
 begin
+  if current_setting('private.skip_goods_check', true) = 'on' then
+    return;
+  end if;
+
   if not exists (select 1 from public.orders where id = target) then
     return;
   end if;
 
   select
-    count(*),
+    count(*) filter (where oi.line_kind = 'zbozi'),
     coalesce(sum(oi.selling_price_czk * oi.quantity) filter (where oi.line_kind = 'zbozi'), 0)
   into items, goods
   from public.order_items as oi
   where oi.order_id = target;
 
-  if items > 0 and goods < 2000 then
+  if goods < 2000 then
     raise exception 'Součet zboží včetně DPH musí být alespoň 2 000 Kč.'
       using errcode = '23514';
   end if;
+
+  update public.orders as o
+  set total_amount_czk = (
+    select coalesce(sum(oi.selling_price_czk * oi.quantity), 0)
+    from public.order_items as oi
+    where oi.order_id = target
+  )
+  where o.id = target
+    and o.total_amount_czk is distinct from (
+      select coalesce(sum(oi.selling_price_czk * oi.quantity), 0)
+      from public.order_items as oi
+      where oi.order_id = target
+    );
 end;
 $$;
 
@@ -176,6 +246,9 @@ revoke all on function private.assert_order_goods_minimum(uuid) from public;
 revoke all on function private.enforce_order_goods_from_new() from public;
 revoke all on function private.enforce_order_goods_from_old() from public;
 revoke all on function private.enforce_order_goods_from_both() from public;
+-- Trigger se spouští jako aktuální uživatel a Postgres u toho kontroluje EXECUTE.
+-- Bez grantu authenticated by adminův zápis objednávky spadl na 42501.
+-- Schéma private PostgREST nepublikuje, takže to není veřejné RPC.
 grant execute on function private.assert_order_goods_minimum(uuid) to authenticated, service_role;
 grant execute on function private.enforce_order_goods_from_new() to authenticated, service_role;
 grant execute on function private.enforce_order_goods_from_old() to authenticated, service_role;
@@ -255,4 +328,106 @@ create trigger profiles_enforce_email
   execute function private.enforce_profile_email();
 
 revoke all on function private.enforce_profile_email() from public;
-grant execute on function private.enforce_profile_email() to authenticated, service_role, supabase_auth_admin;
+grant execute on function private.enforce_profile_email() to authenticated, service_role;
+
+-- Mazání objednávky smí smazat řádky, i když by součet zboží klesl pod minimum.
+create or replace function private.mark_order_deleting()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  perform set_config('private.skip_goods_check', 'on', true);
+  return old;
+end;
+$$;
+
+create or replace function private.unmark_order_deleting()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  perform set_config('private.skip_goods_check', 'off', true);
+  return old;
+end;
+$$;
+
+drop trigger if exists orders_mark_deleting on public.orders;
+create trigger orders_mark_deleting
+  before delete on public.orders
+  for each row
+  execute function private.mark_order_deleting();
+
+drop trigger if exists orders_unmark_deleting on public.orders;
+create trigger orders_unmark_deleting
+  after delete on public.orders
+  for each row
+  execute function private.unmark_order_deleting();
+
+-- Prázdná objednávka ani objednávka pod minimem neprojde commitem.
+create or replace function private.enforce_committed_order_goods()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  if not exists (select 1 from public.orders where id = new.id) then
+    return null;
+  end if;
+  perform private.assert_order_goods_minimum(new.id);
+  return null;
+end;
+$$;
+
+drop trigger if exists orders_goods_deferred on public.orders;
+create constraint trigger orders_goods_deferred
+  after insert or update on public.orders
+  deferrable initially deferred
+  for each row
+  execute function private.enforce_committed_order_goods();
+
+revoke all on function private.mark_order_deleting() from public;
+revoke all on function private.unmark_order_deleting() from public;
+revoke all on function private.enforce_committed_order_goods() from public;
+grant execute on function private.mark_order_deleting() to authenticated, service_role;
+grant execute on function private.unmark_order_deleting() to authenticated, service_role;
+grant execute on function private.enforce_committed_order_goods() to authenticated, service_role;
+
+-- GoTrue mění auth.users jako supabase_auth_admin, i když e-mail mění zákazník.
+-- Tenhle role v allowlistu není, takže updateUser({ email }) spadne.
+-- service_role, postgres a administrátor (is_admin) e-mail změnit smí.
+-- V config.toml není přepínač, který by vypnul jen změnu e-mailu a nechal přihlášení.
+create or replace function private.enforce_auth_user_email()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  if tg_op <> 'UPDATE' or new.email is not distinct from old.email then
+    return new;
+  end if;
+
+  if current_user in ('postgres', 'supabase_admin', 'service_role')
+     or (select private.is_admin()) then
+    return new;
+  end if;
+
+  raise exception 'Změna přihlašovacího e-mailu je vypnutá.'
+    using errcode = '42501';
+end;
+$$;
+
+drop trigger if exists auth_users_enforce_email on auth.users;
+create trigger auth_users_enforce_email
+  before update of email on auth.users
+  for each row
+  execute function private.enforce_auth_user_email();
+
+revoke all on function private.enforce_auth_user_email() from public;
+grant execute on function private.enforce_auth_user_email() to supabase_auth_admin, authenticated, service_role;
+grant execute on function private.is_admin() to supabase_auth_admin;
