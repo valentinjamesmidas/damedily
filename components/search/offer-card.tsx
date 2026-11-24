@@ -1,4 +1,9 @@
+"use client";
+
+import { useState } from "react";
 import { INSPECTION_SEAL, formatCzk } from "@/lib/copy";
+
+const PLACEHOLDER_IMAGE = "/placeholder-dil.svg";
 
 export type OfferCardModel = {
   title: string;
@@ -13,14 +18,16 @@ export type OfferCardModel = {
 };
 
 export function OfferCard({ item }: { item: OfferCardModel }) {
+  const [imageUrl, setImageUrl] = useState(item.imageUrl || PLACEHOLDER_IMAGE);
   return (
     <article data-testid="offer-card" className="flex h-full flex-col overflow-hidden rounded-3xl border border-line bg-card">
-      {item.imageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={item.imageUrl} alt="" className="h-40 w-full object-cover" />
-      ) : (
-        <div className="flex h-28 items-end bg-primary px-4 py-3 text-sm font-semibold text-white/80">Bez vlastní fotky</div>
-      )}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={imageUrl}
+        alt=""
+        className="h-40 w-full bg-primary object-cover"
+        onError={() => setImageUrl(PLACEHOLDER_IMAGE)}
+      />
       <div className="flex flex-1 flex-col gap-3 p-4">
         {item.badge ? (
           <p className="w-fit rounded-full bg-accent px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary">
