@@ -825,7 +825,13 @@ select lives_ok(
 reset role;
 select set_config('request.jwt.claim.sub', '', true);
 select set_config('request.jwt.claims', '{}', true);
-alter table auth.users owner to supabase_auth_admin;
+do $$
+begin
+  alter table auth.users owner to supabase_auth_admin;
+exception
+  when insufficient_privilege then
+    null;
+end $$;
 set local role supabase_auth_admin;
 set local search_path to public, extensions;
 select throws_ok(
