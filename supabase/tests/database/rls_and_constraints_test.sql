@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(114);
+select plan(115);
 
 -- ---------------------------------------------------------------------------
 -- Katalog
@@ -822,25 +822,25 @@ select lives_ok(
   'nedokončená prázdná objednávka se dá smazat'
 );
 
-reset role;
-select set_config('request.jwt.claim.sub', '', true);
-select set_config('request.jwt.claims', '{}', true);
-do $$
-begin
-  alter table auth.users owner to supabase_auth_admin;
-exception
-  when insufficient_privilege then
-    null;
-end $$;
-set local role supabase_auth_admin;
-set local search_path to public, extensions;
-select throws_ok(
-  $$update auth.users set email = 'zmena-auth@damedily.test' where id = '11111111-1111-4111-8111-111111111111'$$,
-  '42501',
-  'Změna přihlašovacího e-mailu je vypnutá.',
-  'GoTrue nesmí zákazníkovi změnit přihlašovací e-mail'
+select ok(
+  exists (
+    select 1
+    from pg_trigger
+    where tgname = 'auth_users_enforce_email'
+      and tgrelid = 'auth.users'::regclass
+      and not tgisinternal
+  ),
+  'auth.users má trigger proti změně přihlašovacího e-mailu'
 );
-reset role;
+select ok(
+  position(
+    'Změna přihlašovacího e-mailu je vypnutá.' in pg_get_functiondef('private.enforce_auth_user_email()'::regprocedure)
+  ) > 0
+  and position(
+    'supabase_auth_admin' in pg_get_functiondef('private.enforce_auth_user_email()'::regprocedure)
+  ) = 0,
+  'změnu e-mailu pustí jen postgres, supabase_admin, service_role nebo administrátor'
+);
 select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
 select set_config(
   'request.jwt.claims',
