@@ -267,7 +267,7 @@ describe("Data API neschovává citlivé sloupce jen na klientovi", () => {
     });
     expect([200, 201], item.text).toContain(item.status);
 
-    const order = await rest("orders", config.serviceKey, config.serviceKey, "POST", {
+    const order = await rest("orders?select=id,total_amount_czk,order_items(id)", config.serviceKey, config.serviceKey, "POST", {
       id: ORDER_ID,
       order_number: `DD-API-${ORDER_ID.slice(0, 8)}`,
       user_id: CUSTOMER_ID,
@@ -288,7 +288,7 @@ describe("Data API neschovává citlivé sloupce jen na klientovi", () => {
     });
     expect([200, 201], order.text).toContain(order.status);
 
-    const otherOrder = await rest("orders", config.serviceKey, config.serviceKey, "POST", {
+    const otherOrder = await rest("orders?select=id,order_items(id)", config.serviceKey, config.serviceKey, "POST", {
       id: OTHER_ORDER_ID,
       order_number: `DD-API-${OTHER_ORDER_ID.slice(0, 8)}`,
       user_id: OTHER_ID,
@@ -430,7 +430,7 @@ describe("Data API neschovává citlivé sloupce jen na klientovi", () => {
     expect(profileEmail.body).toEqual([{ email: customerEmail }]);
 
     const lowId = randomUUID();
-    const tooSmall = await rest("orders", config.serviceKey, config.serviceKey, "POST", {
+    const tooSmall = await rest("orders?select=id,order_items(id)", config.serviceKey, config.serviceKey, "POST", {
       id: lowId,
       order_number: `DD-LOW-${lowId.slice(0, 8)}`,
       user_id: CUSTOMER_ID,
@@ -451,7 +451,7 @@ describe("Data API neschovává citlivé sloupce jen na klientovi", () => {
     expect(errorCode(tooSmall)).toBe("23514");
 
     const shipId = randomUUID();
-    const shipping = await rest("orders", config.serviceKey, config.serviceKey, "POST", {
+    const shipping = await rest("orders?select=id,order_items(id)", config.serviceKey, config.serviceKey, "POST", {
       id: shipId,
       order_number: `DD-SHIP-${shipId.slice(0, 8)}`,
       user_id: CUSTOMER_ID,
@@ -480,7 +480,7 @@ describe("Data API neschovává citlivé sloupce jen na klientovi", () => {
     expect(shipping.status).toBeGreaterThanOrEqual(400);
     expect(errorCode(shipping)).toBe("23514");
 
-    const enough = await rest("orders", adminToken, config.anonKey, "POST", {
+    const enough = await rest("orders?select=id,total_amount_czk,order_items(id)", adminToken, config.anonKey, "POST", {
       order_number: `DD-OK-${lowId.slice(0, 8)}`,
       user_id: CUSTOMER_ID,
       total_amount_czk: 0,
