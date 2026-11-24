@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(115);
+select plan(118);
 
 -- ---------------------------------------------------------------------------
 -- Katalog
@@ -804,6 +804,32 @@ select throws_ok(
 select lives_ok(
   $$delete from public.orders where id = '15151515-1515-4151-8151-151515151515'$$,
   'smazání celé objednávky projde'
+);
+select lives_ok(
+  $$select public.insert_order_with_lines(
+      '{"id":"19191919-1919-4191-8191-191919191919","order_number":"DD-RPC-OK","user_id":"11111111-1111-4111-8111-111111111111","total_amount_czk":0}'::jsonb,
+      '[
+        {"item_title_cs":"První","oem_number":"OEM-1","source_platform":"internal_stock","cost_price_czk":800,"selling_price_czk":1500,"quantity":1,"line_kind":"zbozi"},
+        {"item_title_cs":"Druhý","oem_number":"OEM-2","source_platform":"internal_stock","cost_price_czk":600,"selling_price_czk":1000,"quantity":1,"line_kind":"zbozi"}
+      ]'::jsonb
+    )$$,
+  '1500 a 1000 Kč zboží v jednom volání projde'
+);
+select throws_ok(
+  $$select public.insert_order_with_lines(
+      '{"order_number":"DD-RPC-LOW","user_id":"11111111-1111-4111-8111-111111111111","total_amount_czk":0}'::jsonb,
+      '[
+        {"item_title_cs":"První","oem_number":"OEM-3","source_platform":"internal_stock","cost_price_czk":500,"selling_price_czk":1000,"quantity":1,"line_kind":"zbozi"},
+        {"item_title_cs":"Druhý","oem_number":"OEM-4","source_platform":"internal_stock","cost_price_czk":500,"selling_price_czk":999,"quantity":1,"line_kind":"zbozi"}
+      ]'::jsonb
+    )$$,
+  '23514',
+  'Součet zboží včetně DPH musí být alespoň 2 000 Kč.',
+  '1000 a 999 Kč v jednom volání neprojde'
+);
+select lives_ok(
+  $$delete from public.orders where id = '19191919-1919-4191-8191-191919191919'$$,
+  'objednávka z funkce se dá smazat'
 );
 
 select lives_ok(

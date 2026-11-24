@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { INSPECTION_SEAL } from "@/lib/copy";
 import { OfferCard } from "./offer-card";
@@ -49,5 +49,27 @@ describe("karta nabídky", () => {
     ]) {
       expect(text.toLowerCase()).not.toContain(forbidden.toLowerCase());
     }
+  });
+
+  it("po chybě cizí fotky ukáže zástupný obrázek", () => {
+    const { container } = render(
+      <OfferCard
+        item={{
+          title: "Brzdový kotouč",
+          conditionLabel: "Použitý",
+          originLabel: null,
+          conditionDetail: null,
+          oemNumber: null,
+          priceCzk: 2100,
+          deliveryLeadTime: "Na provozovně",
+          imageUrl: "https://cdn.example/a.jpg",
+        }}
+      />,
+    );
+    const image = container.querySelector("img");
+    expect(image?.getAttribute("src")).toBe("https://cdn.example/a.jpg");
+    if (!image) throw new Error("chybí fotka");
+    fireEvent.error(image);
+    expect(image.getAttribute("src")).toBe("/placeholder-dil.svg");
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ImageLinkStore, isBlockedAddress, isPublicImageUrl, lookupPinned, proxyImage, type ImageTransport } from "@/lib/search/images";
+import { ImageLinkStore, canPinDns, isBlockedAddress, isPublicImageUrl, lookupPinned, proxyImage, type ImageTransport } from "@/lib/search/images";
 
 const PUBLIC_IP = "93.184.216.34";
 const IMAGE = new Uint8Array([1, 2, 3, 255]);
@@ -154,6 +154,10 @@ describe("proxy fotek proti SSRF", () => {
       ["broadcast", "255.255.255.255"],
       ["benchmark", "198.18.0.1"],
       ["ietf", "192.0.0.1"],
+      ["ipv6-multicast", "ff02::1"],
+      ["site-local", "fec0::1"],
+      ["documentation", "2001:db8::1"],
+      ["discard", "100::1"],
     ];
     for (const [label, address] of samples) {
       expect(isBlockedAddress(address), label).toBe(true);
@@ -183,5 +187,37 @@ describe("proxy fotek proti SSRF", () => {
     );
     expect(response?.status).toBe(200);
     expect(calls).toBe(1);
+  });
+
+  it("připnutí DNS jde vypnout příznakem i agentem Workers", () => {
+    expect(canPinDns({ env: {}, userAgent: "node" })).toBe(true);
+    expect(canPinDns({ env: { IMAGE_PROXY_PIN_DNS: "0" }, userAgent: "node" })).toBe(false);
+    expect(canPinDns({ env: {}, userAgent: "Cloudflare-Workers" })).toBe(false);
+  });
+
+  it("bez připnutí DNS vrátí zástupnou fotku a cizí adresu nestahuje", async () => {
+    let fetched = false;
+    const previous = process.env.IMAGE_PROXY_PIN_DNS;
+    process.env.IMAGE_PROXY_PIN_DNS = "0";
+    try {
+      const response = await proxyStored(
+        "https://cdn.example/a.jpg",
+        async () => {
+          fetched = true;
+          return [PUBLIC_IP];
+        },
+        async () => {
+          fetched = true;
+          return imageResponse();
+        },
+      );
+      expect(response?.status).toBe(200);
+      expect(response?.headers.get("content-type")).toContain("image/svg+xml");
+      expect(await response?.text()).toContain("Fotka dílu");
+      expect(fetched).toBe(false);
+    } finally {
+      if (previous === undefined) delete process.env.IMAGE_PROXY_PIN_DNS;
+      else process.env.IMAGE_PROXY_PIN_DNS = previous;
+    }
   });
 });

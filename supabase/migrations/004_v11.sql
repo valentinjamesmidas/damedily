@@ -2,6 +2,19 @@
 -- EKOKLADNO, provize a internal_project_tag mizí. Původ skladové položky
 -- nese jen sloupec source: vlastni_sklad / cizi_zdroj / dropship.
 -- Minimum 2 000 Kč je součet zboží včetně DPH, bez dopravy a služeb (R23-A).
+--
+-- Vrácení této migrace, ručně a jen když se ještě nemá nechat v produkci:
+-- 1. Zastavit zápisy.
+-- 2. Obnovit typ public.project_tag a sloupce internal_project_tag
+--    na inventory_items a order_items.
+-- 3. Doplnit je z archive.inventory_project_tag a archive.order_item_project_tag.
+-- 4. Sundat triggery orders_goods_deferred, order_items_goods_minimum_*,
+--    orders_enforce_write, profiles_enforce_email, auth_users_enforce_email
+--    a funkci public.insert_order_with_lines. Sloupce line_kind a source
+--    sundat jen když se vrací i schéma před v1.1.
+-- 5. Vrátit CHECK orders_total_amount_czk_min, pokud se má znovu hlídat
+--    celková částka místo součtu zboží.
+-- 6. Schéma archive nemazat, dokud počet obnovených řádků nesedí.
 
 -- ---------------------------------------------------------------------------
 -- Sklad: jeden vlastník, původ jen ve source.
@@ -131,10 +144,6 @@ declare
   goods numeric;
   items integer;
 begin
-  if current_setting('private.skip_goods_check', true) = 'on' then
-    return;
-  end if;
-
   if not exists (select 1 from public.orders where id = target) then
     return;
   end if;
@@ -246,13 +255,9 @@ revoke all on function private.assert_order_goods_minimum(uuid) from public;
 revoke all on function private.enforce_order_goods_from_new() from public;
 revoke all on function private.enforce_order_goods_from_old() from public;
 revoke all on function private.enforce_order_goods_from_both() from public;
--- Trigger se spouští jako aktuální uživatel a Postgres u toho kontroluje EXECUTE.
--- Bez grantu authenticated by adminův zápis objednávky spadl na 42501.
--- Schéma private PostgREST nepublikuje, takže to není veřejné RPC.
+-- Samotný trigger EXECUTE pro authenticated nepotřebuje. Potřebuje ho jen
+-- assert_order_goods_minimum, protože ho trigger volá jako aktuálního uživatele.
 grant execute on function private.assert_order_goods_minimum(uuid) to authenticated, service_role;
-grant execute on function private.enforce_order_goods_from_new() to authenticated, service_role;
-grant execute on function private.enforce_order_goods_from_old() to authenticated, service_role;
-grant execute on function private.enforce_order_goods_from_both() to authenticated, service_role;
 
 create or replace function private.enforce_order_write()
 returns trigger
@@ -287,9 +292,9 @@ create trigger orders_enforce_write
   execute function private.enforce_order_write();
 
 revoke all on function private.enforce_order_write() from public;
-grant execute on function private.enforce_order_write() to authenticated, service_role;
 
 drop policy if exists orders_insert_own_or_admin on public.orders;
+drop policy if exists orders_insert_admin on public.orders;
 create policy orders_insert_admin
   on public.orders
   for insert
@@ -328,44 +333,13 @@ create trigger profiles_enforce_email
   execute function private.enforce_profile_email();
 
 revoke all on function private.enforce_profile_email() from public;
-grant execute on function private.enforce_profile_email() to authenticated, service_role;
 
--- Mazání objednávky smí smazat řádky, i když by součet zboží klesl pod minimum.
-create or replace function private.mark_order_deleting()
-returns trigger
-language plpgsql
-security invoker
-set search_path = ''
-as $$
-begin
-  perform set_config('private.skip_goods_check', 'on', true);
-  return old;
-end;
-$$;
-
-create or replace function private.unmark_order_deleting()
-returns trigger
-language plpgsql
-security invoker
-set search_path = ''
-as $$
-begin
-  perform set_config('private.skip_goods_check', 'off', true);
-  return old;
-end;
-$$;
-
+-- Mazání objednávky kaskádou smaže řádky, zatímco hlavička už v tabulce není,
+-- takže assert_order_goods_minimum kontrolu přeskočí. Žádný přepínač v session.
 drop trigger if exists orders_mark_deleting on public.orders;
-create trigger orders_mark_deleting
-  before delete on public.orders
-  for each row
-  execute function private.mark_order_deleting();
-
 drop trigger if exists orders_unmark_deleting on public.orders;
-create trigger orders_unmark_deleting
-  after delete on public.orders
-  for each row
-  execute function private.unmark_order_deleting();
+drop function if exists private.mark_order_deleting();
+drop function if exists private.unmark_order_deleting();
 
 -- Prázdná objednávka ani objednávka pod minimem neprojde commitem.
 create or replace function private.enforce_committed_order_goods()
@@ -390,12 +364,7 @@ create constraint trigger orders_goods_deferred
   for each row
   execute function private.enforce_committed_order_goods();
 
-revoke all on function private.mark_order_deleting() from public;
-revoke all on function private.unmark_order_deleting() from public;
 revoke all on function private.enforce_committed_order_goods() from public;
-grant execute on function private.mark_order_deleting() to authenticated, service_role;
-grant execute on function private.unmark_order_deleting() to authenticated, service_role;
-grant execute on function private.enforce_committed_order_goods() to authenticated, service_role;
 
 -- GoTrue mění auth.users jako supabase_auth_admin, i když e-mail mění zákazník.
 -- Tenhle role v allowlistu není, takže updateUser({ email }) spadne.
@@ -429,7 +398,6 @@ create trigger auth_users_enforce_email
   execute function private.enforce_auth_user_email();
 
 revoke all on function private.enforce_auth_user_email() from public;
-grant execute on function private.enforce_auth_user_email() to supabase_auth_admin, authenticated, service_role;
 grant execute on function private.is_admin() to supabase_auth_admin;
 
 -- PostgREST neumí vložit objednávku a řádky jako jeden zápis bez vloženého sloupce.
@@ -442,7 +410,6 @@ set search_path = ''
 as $$
 declare
   new_id uuid;
-  line jsonb;
 begin
   if current_user not in ('postgres', 'service_role', 'supabase_admin')
      and not (select private.is_admin()) then
@@ -459,38 +426,34 @@ begin
   )
   returning id into new_id;
 
-  for line in
-    select value from jsonb_array_elements(coalesce(lines, '[]'::jsonb))
-  loop
-    insert into public.order_items (
-      id,
-      order_id,
-      item_title_cs,
-      oem_number,
-      source_platform,
-      supplier_order_ref,
-      cost_price_czk,
-      selling_price_czk,
-      quantity,
-      line_kind
-    )
-    values (
-      coalesce((line ->> 'id')::uuid, gen_random_uuid()),
-      new_id,
-      line ->> 'item_title_cs',
-      line ->> 'oem_number',
-      (line ->> 'source_platform')::public.source_platform,
-      nullif(line ->> 'supplier_order_ref', ''),
-      (line ->> 'cost_price_czk')::numeric,
-      (line ->> 'selling_price_czk')::numeric,
-      (line ->> 'quantity')::integer,
-      coalesce(nullif(line ->> 'line_kind', ''), 'zbozi')
-    );
-  end loop;
+  insert into public.order_items (
+    id,
+    order_id,
+    item_title_cs,
+    oem_number,
+    source_platform,
+    supplier_order_ref,
+    cost_price_czk,
+    selling_price_czk,
+    quantity,
+    line_kind
+  )
+  select
+    coalesce((line ->> 'id')::uuid, gen_random_uuid()),
+    new_id,
+    line ->> 'item_title_cs',
+    line ->> 'oem_number',
+    (line ->> 'source_platform')::public.source_platform,
+    nullif(line ->> 'supplier_order_ref', ''),
+    (line ->> 'cost_price_czk')::numeric,
+    (line ->> 'selling_price_czk')::numeric,
+    (line ->> 'quantity')::integer,
+    coalesce(nullif(line ->> 'line_kind', ''), 'zbozi')
+  from jsonb_array_elements(coalesce(lines, '[]'::jsonb)) as line;
 
   return new_id;
 end;
 $$;
 
-revoke all on function public.insert_order_with_lines(jsonb, jsonb) from public;
+revoke all on function public.insert_order_with_lines(jsonb, jsonb) from public, anon;
 grant execute on function public.insert_order_with_lines(jsonb, jsonb) to service_role, authenticated;

@@ -117,6 +117,10 @@ export function isBlockedAddress(value: string): boolean {
   if (groups.every((group, index) => group === (index === 7 ? 1 : 0))) return true;
   if ((groups[0]! & 0xfe00) === 0xfc00) return true;
   if ((groups[0]! & 0xffc0) === 0xfe80) return true;
+  if ((groups[0]! & 0xffc0) === 0xfec0) return true;
+  if ((groups[0]! & 0xff00) === 0xff00) return true;
+  if (groups[0] === 0x2001 && groups[1] === 0x0db8) return true;
+  if (groups[0] === 0x0100 && groups[1] === 0 && groups[2] === 0 && groups[3] === 0) return true;
   return false;
 }
 
@@ -204,14 +208,40 @@ export type ImageTransport = (input: {
   signal: AbortSignal;
 }) => Promise<Response>;
 
-function canPinDns(): boolean {
-  return typeof process !== "undefined" && Boolean(process.versions?.node);
+const PLACEHOLDER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360" role="img" aria-label="Zástupná fotka dílu"><rect width="640" height="360" fill="#1E293B"/><circle cx="320" cy="168" r="46" fill="none" stroke="#FF5A1F" stroke-width="10"/><path d="M320 122v92M274 168h92" stroke="#F8FAFC" stroke-width="8"/><text x="320" y="268" text-anchor="middle" fill="#F8FAFC" font-family="sans-serif" font-size="28">Fotka dílu</text></svg>`;
+
+export function placeholderImageResponse(): Response {
+  return new Response(PLACEHOLDER_SVG, {
+    status: 200,
+    headers: {
+      "Content-Type": "image/svg+xml",
+      "Cache-Control": "public, max-age=86400",
+      "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": "default-src 'none'; sandbox",
+      "Content-Disposition": "inline",
+    },
+  });
+}
+
+/**
+ * Připnutí DNS nejde na Cloudflare Workers. `process.versions.node` tam při
+ * nodejs_compat existuje, proto se na něj nespoléhá. Vypne ho příznak
+ * IMAGE_PROXY_PIN_DNS=0 nebo user agent přesně `Cloudflare-Workers`.
+ */
+export function canPinDns(input?: {
+  env?: Record<string, string | undefined>;
+  userAgent?: string;
+}): boolean {
+  const env = input?.env ?? (typeof process === "undefined" ? {} : process.env);
+  if (env.IMAGE_PROXY_PIN_DNS === "0") return false;
+  const userAgent =
+    input?.userAgent ?? (typeof navigator === "undefined" ? "" : navigator.userAgent);
+  return userAgent !== "Cloudflare-Workers";
 }
 
 /**
  * Node umí připnout socket na ověřenou IP a nechat Host i SNI na jméně.
- * Cloudflare Workers `fetch` to neumí: DNS si řeší runtime znovu a vlastní lookup není.
- * Tam se fotka nestáhne (502). Alternativa je nechat proxy jen na Node serveru.
+ * Cloudflare Workers `fetch` to neumí. Tam se cizí fotka nestahuje a vrací se zástupný obrázek.
  */
 export function nodePinnedTransport(input: {
   url: URL;
@@ -220,7 +250,7 @@ export function nodePinnedTransport(input: {
   headers: Record<string, string>;
   signal: AbortSignal;
 }): Promise<Response> {
-  if (!canPinDns()) return Promise.resolve(new Response(null, { status: 502 }));
+  if (!canPinDns()) return Promise.resolve(placeholderImageResponse());
   const lib = input.url.protocol === "https:" ? https : http;
   return new Promise((resolve) => {
     const req = lib.request(
@@ -357,6 +387,7 @@ export async function proxyImage(
 ): Promise<Response> {
   const initial = store.resolve(token);
   if (!initial) return new Response(null, { status: 404 });
+  if (!canPinDns()) return placeholderImageResponse();
   const headers = { "User-Agent": MEDIA_USER_AGENT, Accept: "image/avif,image/webp,image/jpeg,image/png,image/gif" };
 
   let current = initial;
