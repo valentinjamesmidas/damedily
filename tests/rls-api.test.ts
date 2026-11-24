@@ -544,7 +544,7 @@ describe("Data API neschovává citlivé sloupce jen na klientovi", () => {
     if (createdId) {
       const stored = await rest(`orders?id=eq.${createdId}&select=total_amount_czk`, config.serviceKey, config.serviceKey);
       expect(rowsOf(stored.body).map((row) => moneyRow(row, ["total_amount_czk"]))).toEqual([
-        { id: createdId, total_amount_czk: 2300 },
+        { total_amount_czk: 2300 },
       ]);
       await rest(`orders?id=eq.${createdId}`, config.serviceKey, config.serviceKey, "DELETE");
     }
